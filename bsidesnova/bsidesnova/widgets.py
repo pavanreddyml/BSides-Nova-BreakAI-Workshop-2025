@@ -12,6 +12,9 @@ from typing import Literal, get_args, get_origin
 import ipywidgets as widgets
 from ipywidgets import Layout
 from tensorflow.keras.utils import get_file  # <- use TF to fetch ImageNet ids/names
+from PIL import Image
+import numpy as np
+from io import BytesIO
 
 CATEGORY_PACKAGES: Mapping[str, str] = {
     "whitebox": "adversarial_lab.arsenal.adversarial.whitebox",
@@ -27,7 +30,6 @@ MNIST_DIGITS_CLASSES = tuple(str(i) for i in range(10))
 @dataclass(frozen=True)
 class AttackInfo:
     """Container describing an attack implementation."""
-
     label: str
     cls: type
 
@@ -37,7 +39,8 @@ class AttackSelectorWidget:
         self.root_path = Path(root_path or Path.cwd())
         self._attacks: Dict[str, Dict[str, AttackInfo]] = {}
         self._attack_param_widgets: List[widgets.Widget] = []
-        self._imagenet_pairs_cache: Optional[List[Tuple[str, int]]] = None  # cache of [(label, idx)]
+        self._imagenet_pairs_cache: Optional[List[Tuple[str, int]]] = None  # cache of [(name, idx)]
+        self._uploaded_image_array: Optional[np.ndarray] = None
 
         common_style = {"description_width": "initial"}
         indent_layout = Layout(margin="0 0 0 220px")  # shift right so labels aren’t cut off
@@ -61,8 +64,8 @@ class AttackSelectorWidget:
         self.param_container = widgets.VBox(layout=indent_layout)
 
         # ---- Dataset section ----
-        self.dataset_header = widgets.HTML(
-            value="<h4 style='margin:8px 0 0 220px;'>Dataset</h4>"
+        self.model_header = widgets.HTML(
+            value="<h4 style='margin:8px 0 0 220px;'>Model</h4>"
         )
 
         self.model_selector = widgets.Dropdown(
@@ -71,21 +74,46 @@ class AttackSelectorWidget:
             layout=indent_layout,
         )
 
+        # ---- Image source selector (two-box style like Category) ----
+        self.image_source_selector = widgets.ToggleButtons(
+            options=[("Dataset Image", "dataset"), ("Upload Image", "upload")],
+            description="Image Source:",
+            value="dataset",
+            button_style="",
+            style=common_style,
+            layout=indent_layout,
+        )
+
+        # ---- Image selection (dataset-based) ----
         self.image_class_selector = widgets.Dropdown(
             description="Image Class:",
             style=common_style,
             layout=indent_layout,
         )
-
         self.image_name_selector = widgets.Dropdown(
             description="Image Name:",
             style=common_style,
             layout=indent_layout,
         )
 
-        # Target Class now a Dropdown with "idx - name" labels
+        # ---- Custom image upload (optional) ----
+        self.custom_image_uploader = widgets.FileUpload(
+            accept="image/*",
+            multiple=False,
+            description="Upload Image",
+            style=common_style,
+            layout=indent_layout,
+        )
+        self._custom_image_help = widgets.HTML(
+            value="<em style='margin-left:220px;'>If provided, this image overrides Image Class/Name.</em>"
+        )
+
+        # Container that swaps between dataset selectors and upload widget
+        self.image_source_container = widgets.VBox(layout=Layout(margin="0"))
+
+        # ---- Target class (show 'idx - label') ----
         self.target_class_selector = widgets.Dropdown(
-            description="Target Class:",
+            description="Target Class Idx:",
             style=common_style,
             layout=indent_layout,
         )
@@ -93,18 +121,18 @@ class AttackSelectorWidget:
         self._attach_observers()
         self._initialise_state()
 
-        # Assemble in requested order:
+        # Assemble in requested order (image source selector/area below "Model"):
         self.widget = widgets.VBox(
             [
-                self.category_selector,            # 1) Category
-                self.attack_selector,              # 2) Attack selector
-                self.param_container,              #    Attack params (rendered dynamically)
+                self.category_selector,          # Category
+                self.attack_selector,            # Attack selector
+                self.param_container,            # Attack params (rendered dynamically)
                 widgets.HTML("<hr />"),
-                self.dataset_header,               # 3) Dataset section
-                self.model_selector,               #    Dataset
-                self.image_class_selector,         #    Image Class
-                self.image_name_selector,          #    Image Name
-                self.target_class_selector,        #    Target Class (idx + name)
+                self.model_header,               # Dataset section header
+                self.model_selector,             # Model
+                self.image_source_selector,      # Image Source (two-box style)
+                self.image_source_container,     # Either dataset selectors or upload widget
+                self.target_class_selector,      # Target class idx - label (at the end)
             ]
         )
 
@@ -116,18 +144,20 @@ class AttackSelectorWidget:
         display(self.widget)
 
     def get_configuration(self) -> Dict[str, Any]:
-        # Translate target_class to its numeric index (value) and include label
+        # Numeric idx as value; label is display only
         target_val = self.target_class_selector.value
-        target_label = dict(self.target_class_selector.options).get(target_val, None)
+        use_upload = self.image_source_selector.value == "upload"
+        image_array = self._uploaded_image_array if use_upload else None
+
         return {
             "category": self.category_selector.value,
-            "dataset": self.model_selector.value,  # renamed from "model"
+            "model": self.model_selector.value,           # Selector expects "model"
             "attack": self.attack_selector.value,
             "attack_params": self._collect_attack_parameters(),
-            "image_class": self.image_class_selector.value,
-            "image_name": self.image_name_selector.value,
+            "image_class": None if use_upload else self.image_class_selector.value,
+            "image_name": None if use_upload else self.image_name_selector.value,
+            "image_array": image_array,                   # Preferred by Selector if not None
             "target_class_idx": target_val,
-            "target_class_label": target_label,
         }
 
     # ------------------------------------------------------------------
@@ -138,11 +168,14 @@ class AttackSelectorWidget:
         self.model_selector.observe(self._on_model_change, names="value")
         self.attack_selector.observe(self._on_attack_change, names="value")
         self.image_class_selector.observe(self._on_image_class_change, names="value")
+        self.image_source_selector.observe(self._on_image_source_change, names="value")
+        self.custom_image_uploader.observe(self._on_custom_image_upload, names="value")
 
     def _initialise_state(self) -> None:
         self._refresh_models()
         self._refresh_attacks()
         self._refresh_datasets()
+        self._sync_image_source_area()
 
     def _on_category_change(self, change: MutableMapping[str, Any]) -> None:
         if change.get("new") == change.get("old"):
@@ -166,6 +199,42 @@ class AttackSelectorWidget:
         if change.get("new") == change.get("old"):
             return
         self._refresh_image_names()
+
+    def _on_image_source_change(self, change: MutableMapping[str, Any]) -> None:
+        if change.get("new") == change.get("old"):
+            return
+        if change.get("new") == "upload":
+            self.image_class_selector.value = None
+            self.image_name_selector.value = None
+        self._sync_image_source_area()
+
+    def _on_custom_image_upload(self, change: MutableMapping[str, Any]) -> None:
+        fileinfo = self._get_first_upload(change.get("new"))
+        if not fileinfo:
+            self._uploaded_image_array = None
+            return
+        img = Image.open(BytesIO(fileinfo["content"])).convert("RGB")
+        self._uploaded_image_array = np.array(img)
+
+    def _get_first_upload(self, value) -> Optional[dict]:
+        if not value:
+            return None
+        if isinstance(value, dict):
+            return next(iter(value.values())) if value else None
+        if isinstance(value, (list, tuple)):
+            return value[0] if value else None
+        return None
+
+    def _sync_image_source_area(self) -> None:
+        use_upload = self.image_source_selector.value == "upload"
+        if use_upload:
+            self.image_class_selector.disabled = True
+            self.image_name_selector.disabled = True
+            self.image_source_container.children = [self.custom_image_uploader, self._custom_image_help]
+        else:
+            self.image_class_selector.disabled = False
+            self.image_name_selector.disabled = False
+            self.image_source_container.children = [self.image_class_selector, self.image_name_selector]
 
     # ------------------------------------------------------------------
     # Dataset helpers
@@ -214,7 +283,7 @@ class AttackSelectorWidget:
         else:
             self.image_class_selector.value = None
 
-        # Target class dropdown (idx + label from ImageNet via TF, or MNIST)
+        # Target class dropdown (IDX + label)
         target_idx_options = self._target_class_options(category=self.category_selector.value)
         self.target_class_selector.options = target_idx_options
         self.target_class_selector.value = (
@@ -239,30 +308,31 @@ class AttackSelectorWidget:
             self.image_name_selector.value = None
 
     def _target_class_options(self, category: str) -> List[Tuple[str, Optional[int]]]:
-        """Return dropdown options for Target Class as [(label, idx), ...]."""
+        """Return dropdown options as [('idx - label', idx), ...]."""
+        options: List[Tuple[str, int]] = []
         if category == "whitebox":
+            # [(name, idx), ...]
             pairs = self._imagenet_idx_label_pairs_from_tf()
+            options = [(f"{idx} - {name}", idx) for (name, idx) in pairs]
         else:
             model = self.model_selector.value or ""
             if model == "mnist_digits":
-                pairs = [(f"{name} - {i}", i) for i, name in enumerate(MNIST_DIGITS_CLASSES)]
+                options = [(f"{i} - {name}", i) for i, name in enumerate(MNIST_DIGITS_CLASSES)]
             else:
-                pairs = []
+                options = []
 
-        if not pairs:
+        if not options:
             return [("No target classes available", None)]
-        return [("Select...", None)] + pairs
+        return [("Select...", None)] + options
 
     def _imagenet_idx_label_pairs_from_tf(self) -> List[Tuple[str, int]]:
-        """Load ImageNet (ILSVRC-2012) class ids/names via TensorFlow Keras.
+        """Load ImageNet (ILSVRC-2012) class names and indices via TensorFlow Keras.
 
-        Uses keras.utils.get_file to fetch the canonical JSON used by
-        tf.keras.applications.imagenet_utils.decode_predictions.
+        Returns a list of (name, idx) sorted by idx.
         """
         if self._imagenet_pairs_cache is not None:
             return self._imagenet_pairs_cache
 
-        # Download (or use cached) class index JSON via TF utility
         json_path = get_file(
             fname="imagenet_class_index.json",
             origin="https://storage.googleapis.com/download.tensorflow.org/data/imagenet_class_index.json",
@@ -270,14 +340,12 @@ class AttackSelectorWidget:
             file_hash=None,
         )
         with open(json_path, "r") as f:
-            class_index: Dict[str, List[str]] = json.load(f)  # e.g., {"0": ["n01440764","tench"],...}
+            class_index: Dict[str, List[str]] = json.load(f)  # {"0": ["n01440764","tench"], ...}
 
-        # Build pairs sorted by integer index
         items: List[Tuple[str, int]] = []
-        for k, (wnid, name) in class_index.items():
+        for k, (_wnid, name) in class_index.items():
             idx = int(k)
-            label = f"{name} - {idx}"
-            items.append((label, idx))
+            items.append((name, idx))
         items.sort(key=lambda x: x[1])
 
         self._imagenet_pairs_cache = items
@@ -352,15 +420,15 @@ class AttackSelectorWidget:
         signature = inspect.signature(attack_cls.__init__)
         widgets_list: List[widgets.Widget] = []
         for name, parameter in signature.parameters.items():
-            # Exclude certain parameters globally
-            if name in {"self", "model", "preprocess_fn", "pred_fn"}:
+            # Skip internals and model/preprocess-related params (remove preprocessing_fn)
+            if name in {"self", "model", "preprocess", "preprocessing_fn", "preprocess_fn", "pred_fn"}:
                 continue
             if parameter.kind in (parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD):
                 continue
             widget = self._widget_for_parameter(name, parameter)
             if widget is None:
                 continue
-            widget._param_name = name  # type: ignore[attr-defined]
+            widget._param_name = name
             widgets_list.append(widget)
         return widgets_list
 

@@ -12,17 +12,46 @@ class Selector:
 
     def attacker_selector(self, config):
         category = config["category"]
-        dataset = config["dataset"]
+        model_name = config["model"]
+
         attack = config["attack"]
         attack_params = config["attack_params"]
+
+        image_array = config.get("image_array", None) 
         image_class = config["image_class"]
         image_name = config["image_name"]
-        target_class_idx = config["target_class_idx"]        
+        target_class_idx = config["target_class_idx"]
+        
 
+
+        # Get all model related data
+        model_data = self.get_model(model_name)
+        model = model_data["model"]
+        preprocess_fn = model_data["preprocess_input"]
+        decode_preds = model_data["decode_predictions"]
+        input_shape = model_data["input_shape"]
+
+
+
+        # Get image Array
+        dataset_dir_map = {
+            "inception": "imagenet",
+            "resnet": "imagenet",
+            "mobilenet": "imagenet",
+            "mnist_digits": "digits"
+        }
+        if image_array is not None:
+            img_arr = image_array
+            img_arr = tf.image.resize(img_arr, input_shape[:2]).numpy()
+        else:
+            img_arr = self.get_image(directory=dataset_dir_map[model_name], 
+                                     image_class=image_class, 
+                                     image_name=image_name, 
+                                     input_shape=input_shape)
+
+
+        # Get Attacker
         if category == "whitebox":
-            model, preprocess_fn, decode_preds, input_shape = self.get_model(dataset)
-            img_arr = self.get_image("imagenet", image_class, image_name, input_shape)
-
             def preprocess(sample, *args, **kwargs):
                 input_sample = tf.cast(sample, dtype=tf.float32)
                 if len(input_sample.shape) == 2:
@@ -37,92 +66,85 @@ class Selector:
                 batch_image = tf.expand_dims(resized_image, axis=0)
                 return preprocess_fn(batch_image)
             
-            def predict_fn(samples, *args, **kwargs):
-                samples = np.array(samples)
-                preds = model.predict(samples, verbose=0)
-                return [pred for pred in preds]
-            
             if attack == "Fast Sign Gradient Method":
-                attacker = FastSignGradientMethodAttack(model, 
-                                                        preprocess=preprocess, 
-                                                        **attack_params)
+                attacker = FastSignGradientMethodAttack
             elif attack == "Projected Gradient Descent":
-                attacker = ProjectedGradientDescentAttack(model, 
-                                                          preprocess=preprocess, 
-                                                          **attack_params)
+                attacker = ProjectedGradientDescentAttack
             elif attack == "Carlini Wagner":
-                attacker = CarliniWagnerAttack(model, 
-                                                 preprocess=preprocess, 
-                                                 **attack_params)
+                attacker = CarliniWagnerAttack
             elif attack == "Deep Fool":
-                attacker = DeepFoolAttack(model, 
-                                          preprocess=preprocess, 
-                                          **attack_params)
+                attacker = DeepFoolAttack
             elif attack == "Smooth Fool":
-                attacker = SmoothFoolAttack(model, 
-                                            preprocess=preprocess, 
-                                            **attack_params)
+                attacker = SmoothFoolAttack
                 
 
             return {
                 "attacker": attacker,
-                "sample": img_arr,
+                "model": model,
+                "preprocess": preprocess,
+                "attack_params": attack_params,
                 "input_shape": input_shape,
-                "preprocess_fn": preprocess,
-                "predict_fn": predict_fn,
+                "sample": img_arr,
                 "decode_preds": decode_preds,
                 "target_class": target_class_idx,
             }
             
         if category == "blackbox":
-            pred_fn, preprocess_fn, decode_preds, input_shape = self.get_model(dataset)
-            img_arr = self.get_image(dataset, image_class, image_name, input_shape)
-
             if attack == "Finite Difference":
-                attacker = FiniteDifferenceAttack(pred_fn, 
-                                        **attack_params)
-                
+                attacker = FiniteDifferenceAttack
             elif attack == "NES":
-                attacker = NESAttack(pred_fn, 
-                                    **attack_params)
-                
+                attacker = NESAttack
             elif attack == "RGF":
-                attacker = RGFAttack(pred_fn, 
-                                    **attack_params)
-                
+                attacker = RGFAttack
             elif attack == "SPSA":
-                attacker = SPSAAttack(pred_fn, 
-                                     **attack_params)
+                attacker = SPSAAttack
 
             return {
                 "attacker": attacker,
-                "sample": img_arr,
+                "model": model,
+                "preprocess": preprocess,
+                "attack_params": attack_params,
                 "input_shape": input_shape,
-                "preprocess_fn": preprocess_fn,
-                "predict_fn": pred_fn,
+                "sample": img_arr.astype(int),
                 "decode_preds": decode_preds,
                 "target_class": target_class_idx,
             }
 
     def get_model(self, dataset):
+        
         if dataset == "inception":
             from tensorflow.keras.applications import InceptionV3
             from tensorflow.keras.applications.inception_v3 import preprocess_input, decode_predictions
             model = InceptionV3(weights='imagenet')
             input_shape = (299, 299, 3)
-            return model, preprocess_input, decode_predictions, input_shape
+            return {
+                "model": model,
+                "preprocess_input": preprocess_input,
+                "decode_predictions": decode_predictions,
+                "input_shape": input_shape
+            }
         elif dataset == "resnet":
             from tensorflow.keras.applications import ResNet50
             from tensorflow.keras.applications.resnet import preprocess_input, decode_predictions
             model = ResNet50(weights='imagenet')
             input_shape = (224, 224, 3)
-            return model, preprocess_input, decode_predictions, input_shape
+            return {
+                "model": model,
+                "preprocess_input": preprocess_input,
+                "decode_predictions": decode_predictions,
+                "input_shape": input_shape
+            }
         elif dataset == "mobilenet":
             from tensorflow.keras.applications import MobileNetV2
             from tensorflow.keras.applications.mobilenet_v2 import preprocess_input, decode_predictions
             model = MobileNetV2(weights='imagenet')
             input_shape = (224, 224, 3)
-            return model, preprocess_input, decode_predictions, input_shape
+            return {
+                "model": model,
+                "preprocess_input": preprocess_input,
+                "decode_predictions": decode_predictions,
+                "input_shape": input_shape
+            }
         elif dataset == "mnist_digits":
             model = tf.keras.models.load_model(os.path.join(self.root_path, "assets/models/mnist_digits.h5"))
 
@@ -140,7 +162,12 @@ class Selector:
                 return results
             
             input_shape = (28, 28, 1)
-            return pred_fn, preprocess_input, decode_predictions, input_shape
+            return {
+                "model": pred_fn,
+                "preprocess_input": preprocess_input,
+                "decode_predictions": decode_predictions,
+                "input_shape": input_shape
+            }
 
     def get_image(self, directory, image_class, image_name, input_shape):
         path = os.path.join(self.root_path, "assets/images", directory, image_class, image_name)
