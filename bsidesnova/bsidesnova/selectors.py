@@ -20,7 +20,7 @@ class Selector:
         target_class_idx = config["target_class_idx"]        
 
         if category == "whitebox":
-            model, input_shape, preprocess_fn, decode_preds = self.get_model(dataset)
+            model, preprocess_fn, decode_preds, input_shape = self.get_model(dataset)
             img_arr = self.get_image("imagenet", image_class, image_name, input_shape)
 
             def preprocess(sample, *args, **kwargs):
@@ -105,7 +105,7 @@ class Selector:
             }
 
     def get_model(self, dataset):
-        if dataset == "inception_v3":
+        if dataset == "inception":
             from tensorflow.keras.applications import InceptionV3
             from tensorflow.keras.applications.inception_v3 import preprocess_input, decode_predictions
             model = InceptionV3(weights='imagenet')
