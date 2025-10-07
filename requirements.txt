@@ -1,0 +1,4 @@
+flask_cors
+markdownify
+PyMupdf
+ollama
