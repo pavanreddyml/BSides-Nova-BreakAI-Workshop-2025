@@ -1,7 +1,6 @@
 
-
 class Selector:
     @staticmethod
-    def select(att, params):
+    def whitebox_selector(att, params):
         # Implement selection logic here
         pass
