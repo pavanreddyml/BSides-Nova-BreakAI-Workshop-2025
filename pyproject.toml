@@ -1,5 +1,5 @@
 [project]
-name = "bsides_nova_utils"
+name = "bsidesnova"
 version = "0.0.1"
 description = ""
 authors = [
@@ -9,7 +9,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
-
+    'flask_cors',
+    "markdownify",
+    "PyMupdf",
 ]
 
 [build-system]
