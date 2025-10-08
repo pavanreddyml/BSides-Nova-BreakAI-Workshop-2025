@@ -24,19 +24,17 @@ jobs:
 
       - name: Build site structure
         run: |
+          set -euxo pipefail
           rm -rf dist
           mkdir -p dist/assignment1 dist/assignment2
           cp assets/webpages/assignment1.html dist/assignment1/index.html
           cp assets/webpages/assignment2.html dist/assignment2/index.html
           # optional landing page
-          cat > dist/index.html <<'HTML'
-          <!doctype html><meta charset="utf-8"><title>Assignments</title>
-          <h1>Assignments</h1>
-          <ul>
-            <li><a href="./assignment1/">Assignment 1</a></li>
-            <li><a href="./assignment2/">Assignment 2</a></li>
-          </ul>
-          HTML
+          printf '<!doctype html><meta charset="utf-8"><title>Assignments</title><h1>Assignments</h1><ul><li><a href="./assignment1/">Assignment 1</a></li><li><a href="./assignment2/">Assignment 2</a></li></ul>' > dist/index.html
+          # sanity checks
+          test -f dist/assignment1/index.html
+          test -f dist/assignment2/index.html
+          find dist -maxdepth 2 -type f | sort
 
       - uses: actions/upload-pages-artifact@v3
         with:
