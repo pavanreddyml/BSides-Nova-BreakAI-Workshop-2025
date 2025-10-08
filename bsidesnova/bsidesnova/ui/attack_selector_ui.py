@@ -36,7 +36,6 @@ class AttackInfo:
 
 class AttackSelectorUI:
     def __init__(self, root_path: Optional[Path | str] = None) -> None:
-        from tensorflow.keras.utils import get_file
         self.root_path = Path(root_path or Path.cwd())
         self._attacks: Dict[str, Dict[str, AttackInfo]] = {}
         self._attack_param_widgets: List[widgets.Widget] = []
@@ -349,6 +348,7 @@ class AttackSelectorUI:
         if self._imagenet_pairs_cache is not None:
             return self._imagenet_pairs_cache
 
+        from tensorflow.keras.utils import get_file
         json_path = get_file(
             fname="imagenet_class_index.json",
             origin="https://storage.googleapis.com/download.tensorflow.org/data/imagenet_class_index.json",

@@ -7,13 +7,11 @@ from PIL import Image
 class AdversarialSelector:
     def __init__(self, root_path):
         self.root_path = root_path
+        
+    def attacker_selector(self, config):
         import tensorflow as tf
         from adversarial_lab.arsenal.adversarial.whitebox import FastSignGradientMethodAttack, ProjectedGradientDescentAttack, CarliniWagnerAttack, DeepFoolAttack, SmoothFoolAttack
         from adversarial_lab.arsenal.adversarial.blackbox import FiniteDifferenceAttack, NESAttack, RGFAttack, SPSAAttack
-
-        
-
-    def attacker_selector(self, config):
         category = config["category"]
         model_name = config["model"]
 
