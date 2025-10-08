@@ -47,33 +47,6 @@ class SQLUtils:
     # ---------- NEW: schema context for LLMs ----------
     @execute_with_conn_check
     def get_schema_context(self, include_views: bool = False) -> str:
-        """
-        Returns a concise, LLM-friendly description of the database schema.
-
-        Format (per table):
-        TABLE <name>:
-        - COLUMNS:
-          - <col>: <TYPE> [NOT NULL] [PK[seq]] [DEFAULT <value>]
-        - PRIMARY KEY: (<col>[, <col>...])            # shown if composite or explicit
-        - UNIQUE: (<col>[, <col>...]); ...            # UNIQUE indexes/constraints
-        - FOREIGN KEYS:
-          - (<local_cols>) REFERENCES <ref_table>(<ref_cols>) [ON UPDATE ...] [ON DELETE ...] [MATCH ...]
-        - INDEXES:
-          - <index_name>: (<col>[, <col>...])         # non-unique user indexes
-        - CHECKS:
-          - <check-expression>                         # best-effort parsed from DDL
-
-        Notes:
-        - Pulls metadata from sqlite_master and PRAGMA calls.
-        - Skips SQLite internal tables and auto indexes.
-        - Best-effort parsing of CHECK constraints from CREATE TABLE SQL.
-
-        Args:
-            include_views: if True, includes views with their defining SQL.
-
-        Returns:
-            str: multi-line text suitable as system/context for an LLM.
-        """
         cur = self.conn.cursor()
         types = ("'table'", "'view'") if include_views else ("'table'",)
         cur.execute(

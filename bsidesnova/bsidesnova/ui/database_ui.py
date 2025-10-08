@@ -1,14 +1,3 @@
-# SQLite DB Navigator (Class Version)
-# - Wraps the UI in DatabaseUI with a .run() method
-# - Lists tables, pick columns, filter, order, limit
-# - Shows results in a table, save CSV, quick matplotlib scatter
-# - "Reload Schema" button to pick up external schema changes
-#
-# Notes on external changes:
-# - Data changes: reflected on each "Run" (new connection per query).
-# - Schema changes (new/removed/altered tables/columns): click "Reload Schema".
-# - If an external writer holds a lock, you may see transient errors; re-run after the write completes.
-
 import os
 import sqlite3
 import tempfile

@@ -17,11 +17,8 @@ class OllamaClient:
         self.model = model
 
     def get_models(self) -> bool:
-        try:
-            self.client.list()
-            return True
-        except Exception:
-            return False
+        return self.client.list()
+
 
     def generate(
         self,

@@ -11,7 +11,7 @@ from typing import Literal, get_args, get_origin
 
 import ipywidgets as widgets
 from ipywidgets import Layout
-from tensorflow.keras.utils import get_file  # <- use TF to fetch ImageNet ids/names
+
 from PIL import Image
 import numpy as np
 from io import BytesIO
@@ -34,16 +34,19 @@ class AttackInfo:
     cls: type
 
 
-class AttackSelectorWidget:
+class AttackSelectorUI:
     def __init__(self, root_path: Optional[Path | str] = None) -> None:
+        from tensorflow.keras.utils import get_file
         self.root_path = Path(root_path or Path.cwd())
         self._attacks: Dict[str, Dict[str, AttackInfo]] = {}
         self._attack_param_widgets: List[widgets.Widget] = []
-        self._imagenet_pairs_cache: Optional[List[Tuple[str, int]]] = None  # cache of [(name, idx)]
+        # cache of [(name, idx)]
+        self._imagenet_pairs_cache: Optional[List[Tuple[str, int]]] = None
         self._uploaded_image_array: Optional[np.ndarray] = None
 
         common_style = {"description_width": "initial"}
-        indent_layout = Layout(margin="0 0 0 220px")  # shift right so labels aren’t cut off
+        # shift right so labels aren’t cut off
+        indent_layout = Layout(margin="0 0 0 220px")
 
         # ---- Top: Category ----
         self.category_selector = widgets.ToggleButtons(
@@ -126,13 +129,15 @@ class AttackSelectorWidget:
             [
                 self.category_selector,          # Category
                 self.attack_selector,            # Attack selector
-                self.param_container,            # Attack params (rendered dynamically)
+                # Attack params (rendered dynamically)
+                self.param_container,
                 widgets.HTML("<hr />"),
                 self.model_header,               # Dataset section header
                 self.model_selector,             # Model
                 self.image_source_selector,      # Image Source (two-box style)
                 self.image_source_container,     # Either dataset selectors or upload widget
-                self.target_class_selector,      # Target class idx - label (at the end)
+                # Target class idx - label (at the end)
+                self.target_class_selector,
             ]
         )
 
@@ -167,9 +172,12 @@ class AttackSelectorWidget:
         self.category_selector.observe(self._on_category_change, names="value")
         self.model_selector.observe(self._on_model_change, names="value")
         self.attack_selector.observe(self._on_attack_change, names="value")
-        self.image_class_selector.observe(self._on_image_class_change, names="value")
-        self.image_source_selector.observe(self._on_image_source_change, names="value")
-        self.custom_image_uploader.observe(self._on_custom_image_upload, names="value")
+        self.image_class_selector.observe(
+            self._on_image_class_change, names="value")
+        self.image_source_selector.observe(
+            self._on_image_source_change, names="value")
+        self.custom_image_uploader.observe(
+            self._on_custom_image_upload, names="value")
 
     def _initialise_state(self) -> None:
         self._refresh_models()
@@ -230,11 +238,13 @@ class AttackSelectorWidget:
         if use_upload:
             self.image_class_selector.disabled = True
             self.image_name_selector.disabled = True
-            self.image_source_container.children = [self.custom_image_uploader, self._custom_image_help]
+            self.image_source_container.children = [
+                self.custom_image_uploader, self._custom_image_help]
         else:
             self.image_class_selector.disabled = False
             self.image_name_selector.disabled = False
-            self.image_source_container.children = [self.image_class_selector, self.image_name_selector]
+            self.image_source_container.children = [
+                self.image_class_selector, self.image_name_selector]
 
     # ------------------------------------------------------------------
     # Dataset helpers
@@ -244,7 +254,8 @@ class AttackSelectorWidget:
         if category == "whitebox":
             options = [(model.title(), model) for model in WHITEBOX_MODELS]
         else:
-            options = [(model.replace("_", " ").title(), model) for model in BLACKBOX_MODELS]
+            options = [(model.replace("_", " ").title(), model)
+                       for model in BLACKBOX_MODELS]
 
         self.model_selector.options = options
         self.model_selector.value = options[0][1] if options else None
@@ -274,7 +285,8 @@ class AttackSelectorWidget:
         classes = self._list_directory_names(dataset_root)
 
         # Image class dropdown (directory names if present)
-        class_options = self._build_options(classes, empty_label="No classes available")
+        class_options = self._build_options(
+            classes, empty_label="No classes available")
         self.image_class_selector.options = class_options
         if len(class_options) > 1:
             self.image_class_selector.value = class_options[1][1]
@@ -284,10 +296,12 @@ class AttackSelectorWidget:
             self.image_class_selector.value = None
 
         # Target class dropdown (IDX + label)
-        target_idx_options = self._target_class_options(category=self.category_selector.value)
+        target_idx_options = self._target_class_options(
+            category=self.category_selector.value)
         self.target_class_selector.options = target_idx_options
         self.target_class_selector.value = (
-            target_idx_options[1][1] if len(target_idx_options) > 1 else (target_idx_options[0][1] if target_idx_options else None)
+            target_idx_options[1][1] if len(target_idx_options) > 1 else (
+                target_idx_options[0][1] if target_idx_options else None)
         )
 
         self._refresh_image_names()
@@ -298,7 +312,8 @@ class AttackSelectorWidget:
         image_dir = dataset_root / class_name if dataset_root and class_name else None
         image_names = self._list_file_names(image_dir)
 
-        image_options = self._build_options(image_names, empty_label="No images available")
+        image_options = self._build_options(
+            image_names, empty_label="No images available")
         self.image_name_selector.options = image_options
         if len(image_options) > 1:
             self.image_name_selector.value = image_options[1][1]
@@ -317,7 +332,8 @@ class AttackSelectorWidget:
         else:
             model = self.model_selector.value or ""
             if model == "mnist_digits":
-                options = [(f"{i} - {name}", i) for i, name in enumerate(MNIST_DIGITS_CLASSES)]
+                options = [(f"{i} - {name}", i)
+                           for i, name in enumerate(MNIST_DIGITS_CLASSES)]
             else:
                 options = []
 
@@ -340,7 +356,8 @@ class AttackSelectorWidget:
             file_hash=None,
         )
         with open(json_path, "r") as f:
-            class_index: Dict[str, List[str]] = json.load(f)  # {"0": ["n01440764","tench"], ...}
+            class_index: Dict[str, List[str]] = json.load(
+                f)  # {"0": ["n01440764","tench"], ...}
 
         items: List[Tuple[str, int]] = []
         for k, (_wnid, name) in class_index.items():
@@ -357,7 +374,8 @@ class AttackSelectorWidget:
     def _refresh_attacks(self) -> None:
         category = self.category_selector.value
         attacks = self._discover_attacks(category)
-        options = self._build_options(attacks.keys(), empty_label="No attacks found")
+        options = self._build_options(
+            attacks.keys(), empty_label="No attacks found")
         self.attack_selector.options = options
         if len(options) > 1:
             self.attack_selector.value = options[1][1]
@@ -373,7 +391,8 @@ class AttackSelectorWidget:
         attack_info = self._attacks.get(category, {}).get(selected)
 
         if not attack_info:
-            self.param_container.children = [widgets.HTML("<em>No attack selected.</em>")]
+            self.param_container.children = [
+                widgets.HTML("<em>No attack selected.</em>")]
             self._attack_param_widgets = []
             return
 
@@ -382,7 +401,8 @@ class AttackSelectorWidget:
         if widgets_list:
             self.param_container.children = widgets_list
         else:
-            self.param_container.children = [widgets.HTML("<em>No configurable parameters.</em>")]
+            self.param_container.children = [widgets.HTML(
+                "<em>No configurable parameters.</em>")]
 
     def _collect_attack_parameters(self) -> Dict[str, Any]:
         params: Dict[str, Any] = {}
@@ -404,7 +424,8 @@ class AttackSelectorWidget:
 
         exported_names = getattr(module, "__all__", None)
         if not exported_names:
-            exported_names = [name for name, obj in inspect.getmembers(module, inspect.isclass)]
+            exported_names = [name for name, obj in inspect.getmembers(
+                module, inspect.isclass)]
 
         for name in exported_names:
             cls = getattr(module, name, None)
@@ -498,7 +519,8 @@ class AttackSelectorWidget:
                 return widgets.Dropdown(
                     description=description,
                     options=options,
-                    value=default if default in options else (options[0] if options else None),
+                    value=default if default in options else (
+                        options[0] if options else None),
                     style=common_style,
                     layout=indent_layout,
                 )

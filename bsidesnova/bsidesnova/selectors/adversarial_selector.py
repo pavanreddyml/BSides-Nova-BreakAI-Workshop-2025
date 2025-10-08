@@ -1,14 +1,17 @@
-from adversarial_lab.arsenal.adversarial.whitebox import *
-from adversarial_lab.arsenal.adversarial.blackbox import *
-
 import os
-import tensorflow as tf
+
 import numpy as np
 from PIL import Image
 
-class Selector:
+
+class AdversarialSelector:
     def __init__(self, root_path):
         self.root_path = root_path
+        import tensorflow as tf
+        from adversarial_lab.arsenal.adversarial.whitebox import FastSignGradientMethodAttack, ProjectedGradientDescentAttack, CarliniWagnerAttack, DeepFoolAttack, SmoothFoolAttack
+        from adversarial_lab.arsenal.adversarial.blackbox import FiniteDifferenceAttack, NESAttack, RGFAttack, SPSAAttack
+
+        
 
     def attacker_selector(self, config):
         category = config["category"]
