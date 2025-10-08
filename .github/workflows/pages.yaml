@@ -1,6 +1,5 @@
 # .github/workflows/pages.yml
 name: Deploy to GitHub Pages
-
 on:
   push:
     branches: [main]
@@ -11,7 +10,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: true
 
 jobs:
@@ -21,20 +20,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Prepare site structure
+      - name: Build site structure
         run: |
           rm -rf dist
           mkdir -p dist/assignment1 dist/assignment2
           cp assets/webpages/assignment1.html dist/assignment1/index.html
           cp assets/webpages/assignment2.html dist/assignment2/index.html
-          # optional: a simple landing page
+          # optional landing page
           cat > dist/index.html <<'HTML'
-          <!doctype html>
-          <meta charset="utf-8">
-          <title>Assignments</title>
+          <!doctype html><meta charset="utf-8"><title>Assignments</title>
           <h1>Assignments</h1>
           <ul>
             <li><a href="./assignment1/">Assignment 1</a></li>
@@ -42,11 +38,9 @@ jobs:
           </ul>
           HTML
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
-      - name: Deploy to Pages
-        id: deployment
+      - id: deployment
         uses: actions/deploy-pages@v4
