@@ -13,6 +13,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,7 +23,7 @@ jobs:
           echo "${{ secrets.AZURE_SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
 
-      - name: Prepare target directory with sudo
+      - name: Prepare target directory
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.AZURE_VM_HOST }}
@@ -45,7 +46,7 @@ jobs:
           rm: false
           strip_components: 0
 
-      - name: Install deps in venv & restart service (robust venv creation)
+      - name: Install deps in venv, install/refresh systemd unit, restart
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.AZURE_VM_HOST }}
@@ -54,65 +55,93 @@ jobs:
           script_stop: true
           envs: TARGET_DIR,PYTHON_BIN,SERVICE_NAME
           script: |
-            set -euo pipefail
+            set -euxo pipefail
+            export DEBIAN_FRONTEND=noninteractive
 
             cd "${TARGET_DIR}"
 
-            # --- Robust venv creation for externally managed Python ---
-            mkvenv() {
-              # Clean broken venvs (e.g., missing bin/activate)
-              if [ -d ".venv" ] && [ ! -f ".venv/bin/activate" ]; then
-                rm -rf .venv
-              fi
+            # --- Robust venv creation for externally-managed Python ---
+            if ! "${PYTHON_BIN}" -c "import venv" >/dev/null 2>&1; then
+              sudo apt-get update -y
+              PY_VER="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+              sudo apt-get install -y "python${PY_VER}-venv" || sudo apt-get install -y python3-venv
+            fi
 
-              # Ensure venv module is available
-              if ! "${PYTHON_BIN}" -c "import venv" >/dev/null 2>&1; then
-                sudo apt-get update -y
-                PY_VER="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-                sudo apt-get install -y "python${PY_VER}-venv" || sudo apt-get install -y python3-venv
-              fi
+            # Clean broken venvs
+            if [ -d ".venv" ] && [ ! -f ".venv/bin/activate" ]; then
+              rm -rf .venv
+            fi
 
-              # Try creating venv
-              if [ ! -d ".venv" ]; then
-                "${PYTHON_BIN}" -m venv .venv || true
-              fi
+            # Create venv (fallback to virtualenv if needed)
+            if [ ! -d ".venv" ]; then
+              "${PYTHON_BIN}" -m venv .venv || true
+            fi
+            if [ ! -f ".venv/bin/activate" ]; then
+              sudo apt-get update -y
+              sudo apt-get install -y python3-virtualenv
+              "${PYTHON_BIN}" -m virtualenv .venv
+            fi
 
-              # If still missing, fallback to virtualenv
-              if [ ! -f ".venv/bin/activate" ]; then
-                sudo apt-get update -y
-                sudo apt-get install -y python3-virtualenv || true
-                "${PYTHON_BIN}" -m virtualenv .venv || true
-              fi
-
-              # Final check
-              if [ ! -f ".venv/bin/activate" ]; then
-                echo "ERROR: venv creation failed (no .venv/bin/activate)."
-                exit 1
-              fi
-            }
-
-            mkvenv
-            # shellcheck disable=SC1091
+            # Activate venv
             . .venv/bin/activate
 
-            # Upgrade base tooling inside the venv
+            # Upgrade tooling & install deps
             python -m pip install --upgrade pip setuptools wheel
-
-            # Install app requirements
             if [ -f "requirements.txt" ]; then
               pip install -r requirements.txt
             else
               pip install flask flask-cors pillow
             fi
 
-            # Restart systemd service
-            sudo systemctl daemon-reload || true
+            # --- Install systemd service (idempotent) ---
+            RUN_SCRIPT="${TARGET_DIR}/run.sh"
+            cat > "${RUN_SCRIPT}" <<'EOF'
+            #!/usr/bin/env bash
+            set -euxo pipefail
+            cd "$(dirname "$0")"
+            . .venv/bin/activate
+            # Launch the server
+            exec python -u -m bsidesnova.server.exfil_server
+            EOF
+            chmod +x "${RUN_SCRIPT}"
+
+            SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
+            CURRENT_USER="$(id -un)"
+            CURRENT_GROUP="$(id -gn)"
+            sudo bash -c "cat > '${SERVICE_PATH}'" <<EOF
+            [Unit]
+            Description=ExfilServer (bsidesnova)
+            After=network.target
+
+            [Service]
+            Type=simple
+            User=${CURRENT_USER}
+            Group=${CURRENT_GROUP}
+            WorkingDirectory=${TARGET_DIR}
+            ExecStart=/bin/bash -lc '${RUN_SCRIPT}'
+            Restart=on-failure
+            RestartSec=3
+            Environment=PYTHONUNBUFFERED=1
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            # Reload & restart
+            sudo systemctl daemon-reload
             sudo systemctl enable "${SERVICE_NAME}"
             sudo systemctl restart "${SERVICE_NAME}"
 
-            # Health check
-            sleep 2
-            curl -fsS "http://127.0.0.1:8080/fetch-logs/?n=1" >/dev/null || (sudo journalctl -u "${SERVICE_NAME}" --no-pager -n 100; exit 1)
+            # Health check with retries (service may take a moment)
+            for i in {1..10}; do
+              if curl -fsS "http://127.0.0.1:8080/fetch-logs/?n=1" >/dev/null 2>&1; then
+                echo "Health check OK"
+                break
+              fi
+              echo "Health check retry $i..."
+              sleep 2
+            done
+            curl -fsS "http://127.0.0.1:8080/fetch-logs/?n=1" >/dev/null
 
       - name: Show service status on failure
         if: failure()
@@ -123,5 +152,6 @@ jobs:
           key_path: "private_key.pem"
           envs: SERVICE_NAME
           script: |
+            set -x
             sudo systemctl status "${SERVICE_NAME}" --no-pager || true
-            sudo journalctl -u "${SERVICE_NAME}" -n 200 --no-pager || true
+            sudo journalctl -u "${SERVICE_NAME}" -n 400 --no-pager || true
