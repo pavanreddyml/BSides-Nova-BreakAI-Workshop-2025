@@ -25,10 +25,17 @@ jobs:
         run: |
           rm -rf dist
           mkdir -p dist
-          # Copy your three pages from assets/webpages to the site root
+          # Copy pages
           cp assets/webpages/assignment1.html dist/
           cp assets/webpages/assignment2.html dist/
           cp assets/webpages/login.html dist/
+          # Minimal index that forwards to login.html
+          cat > dist/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=login.html">
+          <link rel="canonical" href="login.html">
+          HTML
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

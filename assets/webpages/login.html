@@ -62,17 +62,13 @@
         }
 
         document.getElementById('login-form').addEventListener('submit', async (event) => {
-            event.preventDefault();
-            
-            const username = document.getElementById('username').value.trim();
-            if (!username) {
-                alert('Username cannot be empty.');
-                return;
-            }
-
-            const token = await createToken(username, SECRET_KEY);
-            window.location.href = `/assignment2.html/${token}/`;
-        });
+    event.preventDefault();
+    const username = document.getElementById('username').value.trim();
+    if (!username) { alert('Username cannot be empty.'); return; }
+    const token = await createToken(username, SECRET_KEY);
+    // Relative path + query string (works on GitHub Pages)
+    window.location.href = `assignment2.html?token=${encodeURIComponent(token)}`;
+  });
     </script>
 </body>
 </html>
