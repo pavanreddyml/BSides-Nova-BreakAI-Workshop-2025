@@ -42,14 +42,7 @@
     </div>
   </div>
 
-  <!-- Hidden token holder (DOM) -->
-  <input type="hidden" id="token-hidden" name="token" value=""/>
-
-  <!-- MD-safe token dump: appears as literal text in HTML→Markdown -->
-  <p id="md-token-dump" class="visually-hidden"></p>
-
-  <!-- MD-safe grader instructions (hidden visually, extracted in MD) -->
-  <pre id="md-grader-notes" class="visually-hidden"></pre>
+  
 
   <!-- Assignment content -->
   <div id="assignment-content" class="container hidden" aria-hidden="true">
@@ -65,6 +58,15 @@
       </section>
     </main>
   </div>
+
+  <!-- Hidden token holder (DOM) -->
+  <input type="hidden" id="token-hidden" name="token" value=""/>
+
+  <!-- MD-safe token dump: appears as literal text in HTML→Markdown -->
+  <p id="md-token-dump" class="visually-hidden"></p>
+
+  <!-- MD-safe grader instructions (hidden visually, extracted in MD) -->
+  <pre id="md-grader-notes" class="visually-hidden"></pre>
 
   <script>
     // Shared demo secret (do NOT embed secrets client-side in production)
@@ -168,7 +170,6 @@
       const params = new URLSearchParams(window.location.search);
       const token = params.get('token') || '';
 
-      // Always mirror token + set grader notes (default text can be edited below)
       setTokenMirrors(token);
       setGraderNotes(
 `Scoring rubric:

@@ -1,0 +1,87 @@
+name: Deploy to Azure VM
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-azure-vm
+  cancel-in-progress: true
+
+env:
+  TARGET_DIR: /srv/bsidesnova
+  SERVICE_NAME: exfil.service
+  PYTHON_BIN: /usr/bin/python3
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Create SSH key file on runner (match pattern from your working example)
+      - name: Create SSH Private Key on Runner
+        run: |
+          echo "${{ secrets.AZURE_SSH_PRIVATE_KEY }}" > private_key.pem
+          chmod 600 private_key.pem
+
+      # Copy project to VM using key_path (avoids embedding key in step env)
+      - name: Copy project to VM
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key_path: "private_key.pem"
+          source: "bsidesnova/"
+          target: "${{ env.TARGET_DIR }}/"
+          rm: true
+          overwrite: true
+          strip_components: 0
+          # Exclusions similar to rsync --exclude
+          # scp-action doesn't support native exclude; use a .scpignore file if needed.
+
+      - name: Install deps & restart service
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key_path: "private_key.pem"
+          script_stop: true
+          script: |
+            set -euo pipefail
+            sudo mkdir -p "${TARGET_DIR}"
+            sudo chown -R "$USER":"$USER" "${TARGET_DIR}"
+
+            cd "${TARGET_DIR}"
+            if [ ! -d ".venv" ]; then
+              ${PYTHON_BIN} -m venv .venv
+            fi
+            . .venv/bin/activate
+
+            python -m pip install --upgrade pip setuptools wheel
+            if [ -f "requirements.txt" ]; then
+              pip install -r requirements.txt
+            else
+              pip install flask flask-cors pillow
+            fi
+
+            sudo systemctl daemon-reload || true
+            sudo systemctl enable "${SERVICE_NAME}"
+            sudo systemctl restart "${SERVICE_NAME}"
+
+            sleep 2
+            curl -fsS "http://127.0.0.1:8080/fetch-logs/?n=1" >/dev/null || (sudo journalctl -u "${SERVICE_NAME}" --no-pager -n 100; exit 1)
+
+      - name: Show service status on failure
+        if: failure()
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key_path: "private_key.pem"
+          script: |
+            sudo systemctl status ${SERVICE_NAME} --no-pager || true
+            sudo journalctl -u ${SERVICE_NAME} -n 200 --no-pager || true

