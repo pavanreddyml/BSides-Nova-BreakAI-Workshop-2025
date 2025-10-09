@@ -1,19 +1,16 @@
-from playwright.sync_api import sync_playwright
-import html2text
+import requests
 
 from .base import Fetcher
 
+class WebpageFetcher():
+    def __init__(self, server_url="http://localhost:8080/fetch-webpage"):
+        self.server_url = server_url
 
-class WebpageFetcher(Fetcher):
     def fetch(self, url: str) -> str:
         try:
-            with sync_playwright() as p:
-                b = p.chromium.launch()
-                page = b.new_page()
-                page.goto(url, wait_until="networkidle")
-                html = page.content()  # post-JS DOM
-                content = html2text.html2text(html)
-                b.close()
+            response = requests.get(self.server_url, params={"url": url}, timeout=5)
+            response.raise_for_status()
+            content = response.json().get("content", "")
         except Exception as e:
-            return f"Error fetching webpage: {e}"
+            return f"Error fetching webpage: {str(e)}"
         return content

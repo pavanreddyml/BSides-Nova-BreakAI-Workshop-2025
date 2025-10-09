@@ -2,10 +2,15 @@ import os
 import io
 import hashlib
 import token
+import PIL
 from flask import Flask, request, send_file, jsonify, abort, send_from_directory
 from flask_cors import CORS
 from PIL import Image, ImageDraw, ImageFont
 import base64
+import traceback
+
+from playwright.sync_api import sync_playwright
+import html2text
 
 import hmac
 import hashlib
@@ -13,7 +18,7 @@ import json
 
 SECRET_KEY = 'this-is-a-shared-secret-for-the-demo'
 
-HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'html_files')
+IMAGES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images')
 
 class ExfilServer:
     def __init__(self, host='localhost', port=8080, log_path='exfil.log'):
@@ -23,6 +28,18 @@ class ExfilServer:
         self.app = Flask("ExfilServer")
         CORS(self.app)
         self.image_generator = None
+        
+
+        image_paths = {
+            'pie': os.path.join(IMAGES_PATH, 'pie.jpg'),
+            'bar': os.path.join(IMAGES_PATH, 'bar.jpg'),
+            'line': os.path.join(IMAGES_PATH, 'line.jpg'),
+            'scatter': os.path.join(IMAGES_PATH, 'scatter.png'),
+            'default': os.path.join(IMAGES_PATH, 'default.png')
+        }
+
+        self.images = {name: Image.open(path) for name, path in image_paths.items()}
+
         self.setup_routes()
 
     def _serve_html(self, filename: str):
@@ -93,11 +110,23 @@ class ExfilServer:
         @self.app.route('/get-image/', methods=['GET'])
         def exfiltrate():
             data = request.args.get('data', '')
+            plot = request.args.get('plot', '')
             with open(self.log_path, 'a') as log_file:
                 client_ip = request.remote_addr or "-"
                 log_file.write(f"{client_ip}: {data}\n")
 
-            image = self.generate_image_from_data(data)
+            if plot == "pie":
+                image_path = os.path.join(IMAGES_PATH, 'pie.jpg')
+            elif plot == "bar":
+                image_path = os.path.join(IMAGES_PATH, 'bar.jpg')
+            elif plot == "line":
+                image_path = os.path.join(IMAGES_PATH, 'line.jpg')
+            elif plot == "scatter":
+                image_path = os.path.join(IMAGES_PATH, 'scatter.png')
+            else:
+                image_path = os.path.join(IMAGES_PATH, 'default.png')
+
+            image = self.images.get(plot, self.images['default'])
             if image:
                 img_io = io.BytesIO()
                 image.save(img_io, 'PNG')
@@ -118,7 +147,7 @@ class ExfilServer:
                     client_ip = request.remote_addr or "-"
                     log_file.write(f"{client_ip}: {data}\n")
 
-                image = self.generate_image_from_data(data, size=256)
+                image = self.images['default']
                 if image:
                     img_io = io.BytesIO()
                     image.save(img_io, 'PNG')
@@ -127,6 +156,28 @@ class ExfilServer:
                 return {"status": "image generation failed"}, 500
             except Exception as e:
                 return {"status": "error", "message": str(e)}, 500
+            
+        @self.app.route('/fetch-webpage/', methods=['GET'])
+        @self.app.route('/fetch-webpage', methods=['GET'])
+        def fetch_webpage():
+            url = request.args.get('url', '')
+            print(url)
+            if not url:
+                return {"status": "error", "message": "URL parameter is required"}, 400
+            try:
+                with sync_playwright() as p:
+                    b = p.chromium.launch()
+                    page = b.new_page()
+                    page.goto(url, wait_until="networkidle")
+                    html = page.content()
+                    content = html2text.html2text(html)
+                    b.close()
+            except Exception as e:
+                print(f"Error fetching webpage: {str(e)}")
+                return {"status": "error", "message": f"Error fetching webpage: {str(e)}, traceback: {traceback.format_exc()}"}, 500
+
+            return jsonify({"content": content}), 200
+
 
         @self.app.route('/fetch-logs/', methods=['GET'])
         def fetch_logs():
