@@ -1,3 +1,4 @@
+# .github/workflows/pages.yml
 name: Deploy to GitHub Pages
 
 on:
@@ -24,15 +25,10 @@ jobs:
         run: |
           rm -rf dist
           mkdir -p dist
+          cp assets/webpages/index.html dist/
           cp assets/webpages/assignment1.html dist/
           cp assets/webpages/assignment2.html dist/
           cp assets/webpages/login.html dist/
-          cat > dist/index.html <<'HTML'
-          <!doctype html>
-          <meta charset="utf-8">
-          <meta http-equiv="refresh" content="0; url=login.html">
-          <link rel="canonical" href="login.html">
-          HTML
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
