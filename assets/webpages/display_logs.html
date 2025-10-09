@@ -65,7 +65,7 @@
 
     async function fetchLogs() {
       const n = Math.max(1, Math.min(parseInt(limitEl.value || '200', 10), 2000));
-      const url = `/fetch-logs/?n=${encodeURIComponent(n)}`;
+      const url = `http://40.90.230.205:8080/fetch-logs/?n=${encodeURIComponent(n)}`;
       const t0 = performance.now();
       statusEl.textContent = 'Loading…';
       try {
