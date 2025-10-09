@@ -45,7 +45,7 @@ jobs:
           rm: false
           strip_components: 0
 
-      - name: Install deps globally & restart service (no venv)
+      - name: Install deps in venv & restart service
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.AZURE_VM_HOST }}
@@ -55,11 +55,16 @@ jobs:
           envs: TARGET_DIR,PYTHON_BIN,SERVICE_NAME
           script: |
             set -euo pipefail
-            # Ensure base tools exist
-            if ! command -v curl >/dev/null 2>&1; then
+
+            # Ensure Python venv tooling exists (externally-managed Python needs python3[-X]-venv)
+            PY_VER="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+            if ! "${PYTHON_BIN}" -m venv --help >/dev/null 2>&1; then
               sudo apt-get update -y
-              sudo apt-get install -y curl
+              # Try versioned venv first, then generic
+              sudo apt-get install -y "python${PY_VER}-venv" || sudo apt-get install -y python3-venv
             fi
+
+            # Ensure pip is available (some minimal images lack it)
             if ! "${PYTHON_BIN}" -m pip -V >/dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y python3-pip
@@ -67,15 +72,24 @@ jobs:
 
             cd "${TARGET_DIR}"
 
-            # Global installs (NO venv)
-            sudo "${PYTHON_BIN}" -m pip install --upgrade pip setuptools wheel
+            # Create/refresh virtual environment
+            if [ ! -d ".venv" ]; then
+              "${PYTHON_BIN}" -m venv .venv
+            fi
+            # shellcheck disable=SC1091
+            . .venv/bin/activate
+
+            # Upgrade base tooling inside the venv
+            python -m pip install --upgrade pip setuptools wheel
+
+            # Install app requirements
             if [ -f "requirements.txt" ]; then
-              sudo "${PYTHON_BIN}" -m pip install -r requirements.txt
+              pip install -r requirements.txt
             else
-              sudo "${PYTHON_BIN}" -m pip install flask flask-cors pillow
+              pip install flask flask-cors pillow
             fi
 
-            # Restart service
+            # Restart systemd service
             sudo systemctl daemon-reload || true
             sudo systemctl enable "${SERVICE_NAME}"
             sudo systemctl restart "${SERVICE_NAME}"
