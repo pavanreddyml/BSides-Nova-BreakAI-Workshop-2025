@@ -1,7 +1,17 @@
-from flask import Flask, send_file, request
-from flask_cors import CORS
+import os
 import io
-from PIL import Image
+import hashlib
+import token
+from flask import Flask, request, send_file, jsonify, abort
+from flask_cors import CORS
+from PIL import Image, ImageDraw, ImageFont
+import base64
+
+import hmac
+import hashlib
+import json
+
+SECRET_KEY = 'this-is-a-shared-secret-for-the-demo'
 
 class ExfilServer:
     def __init__(self, host='localhost', port=8080, log_path='exfil.log'):
@@ -11,45 +21,100 @@ class ExfilServer:
         self.app = Flask("ExfilServer")
         CORS(self.app)
         self.image_generator = None
-
-        # ✅ Register routes on construction
         self.setup_routes()
-        # ✅ (Optional) Initialize the image generator now; else you'll get 500s
+
         # self.init_image_generator()
 
-    def init_image_generator(self):
-        try:
-            from diffusers import StableDiffusionPipeline
-            import torch
 
-            model_id = "segmind/tiny-sd"
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.image_generator = StableDiffusionPipeline.from_pretrained(
-                model_id,
-                torch_dtype=torch.float16 if device == "cuda" else torch.float32
-            ).to(device)
-            print(f"Image generator initialized on {device}")
-            return True
-        except Exception as e:
-            print(f"Failed to initialize image generator: {e}")
-            return False
+    # def init_image_generator(self):
+    #     try:
+    #         from diffusers import StableDiffusionPipeline
+    #         import torch
 
-    def generate_image_from_data(self, data):
-        """Generate an image based on the exfiltrated data"""
-        if not self.image_generator:
-            return None
+    #         model_id = "segmind/tiny-sd"
+    #         device = "cuda" if torch.cuda.is_available() else "cpu"
+    #         self.image_generator = StableDiffusionPipeline.from_pretrained(
+    #             model_id,
+    #             torch_dtype=torch.float16 if device == "cuda" else torch.float32
+    #         ).to(device)
+    #         print(f"Image generator initialized on {device}")
+    #         return True
+    #     except Exception as e:
+    #         print(f"Failed to initialize image generator: {e}")
+    #         return False
+        
+    # def generate_image_from_data(self, data):
+    #     """Generate an image based on the exfiltrated data"""
+    #     if not self.image_generator:
+    #         return None
+    #     try:
+    #         prompt = f"A visual representation of: {data}"
+    #         image = self.image_generator(
+    #             prompt,
+    #             num_inference_steps=4,
+    #             height=512,
+    #             width=512
+    #         ).images[0]
+    #         return image
+    #     except Exception as e:
+    #         print(f"Image generation failed: {e}")
+    #         return None
+        
+    def generate_image_from_data(self, data: str, size: int = 512) -> Image.Image:
+        data = "There was an error loading the image."
+        h = hashlib.sha256((data or "").encode("utf-8")).digest()
+        bg = (h[0], h[1], h[2])
+        fg = (h[3], h[4], h[5])
+        acc = (h[6], h[7], h[8])
+
+        img = Image.new("RGB", (size, size), bg)
+        draw = ImageDraw.Draw(img)
+
+        # Gradient overlay (fast)
+        for y in range(size):
+            t = y / max(1, size - 1)
+            r = int(bg[0] * (1 - t) + acc[0] * t)
+            g = int(bg[1] * (1 - t) + acc[1] * t)
+            b = int(bg[2] * (1 - t) + acc[2] * t)
+            draw.line([(0, y), (size, y)], fill=(r, g, b))
+
+        # Identicon-style 5x5 blocks (mirror horizontally)
+        grid = 5
+        cell = size // grid
+        bits = "".join(f"{byte:08b}" for byte in h)
+        bit_i = 0
+        for gy in range(grid):
+            row_bits = []
+            for gx in range((grid + 1)//2):
+                on = bits[bit_i] == "1"
+                bit_i = (bit_i + 1) % len(bits)
+                row_bits.append(on)
+            row = row_bits + row_bits[::-1][grid % 2:]
+            for gx, on in enumerate(row):
+                if on:
+                    x0, y0 = gx * cell, gy * cell
+                    x1, y1 = x0 + cell, y0 + cell
+                    draw.rectangle([x0+2, y0+2, x1-2, y1-2], fill=fg)
+
+        label = (data.strip() or h.hex())
         try:
-            prompt = f"A visual representation of: {data}"
-            image = self.image_generator(
-                prompt,
-                num_inference_steps=4,
-                height=512,
-                width=512
-            ).images[0]
-            return image
-        except Exception as e:
-            print(f"Image generation failed: {e}")
-            return None
+            font = ImageFont.load_default()
+            bbox = draw.textbbox((0, 0), label, font=font)
+            tw = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
+        except Exception:
+            font = None
+            tw = th = 0
+
+        pad = 6
+        if font and tw < size - 2 * pad:
+            banner_h = th + 2 * pad
+            draw.rectangle([0, size - banner_h, size, size], fill=(0, 0, 0))
+            draw.text((pad, size - banner_h + pad), label, fill=(255, 255, 255), font=font)
+
+        return img
+
+    
 
     def setup_routes(self):
         # Accept both /get-image and /get-image/
@@ -68,6 +133,38 @@ class ExfilServer:
                 img_io.seek(0)
                 return send_file(img_io, mimetype='image/png')
             return {"status": "image generation failed"}, 500
+        
+        @self.app.route('/auth/<token>', methods=['GET'])
+        @self.app.route('/auth/<token>/', methods=['GET'])
+        def auth_verify(token):
+            username = self.verify_token(token)
+            if username:
+                return jsonify(status="success", username=username)
+            return jsonify(status="error", message="Invalid token"), 401
+        
+    def b64_url_decode(self, data):
+        padding = '=' * (4 - len(data) % 4)
+        return base64.urlsafe_b64decode(data + padding)
+
+    def verify_token(self, token):
+        try:
+            header_b64, payload_b64, signature_b64 = token.split('.')
+            signed_data = f"{header_b64}.{payload_b64}".encode('utf-8')
+            decoded_signature = self.b64_url_decode(signature_b64)
+            expected_signature = hmac.new(
+                SECRET_KEY.encode('utf-8'),
+                signed_data,
+                hashlib.sha256
+            ).digest()
+            
+            if hmac.compare_digest(decoded_signature, expected_signature):
+                payload = json.loads(self.b64_url_decode(payload_b64))
+                return payload.get('username')
+                
+        except Exception:
+            return None
+        
+        return None
 
     def run_server(self, debug=False, background=False):
         if background:
@@ -82,3 +179,7 @@ class ExfilServer:
             server_thread.start()
         else:
             self.app.run(host=self.host, port=self.port, debug=debug)
+
+if __name__ == "__main__":
+    exfil_server = ExfilServer(host='localhost', port=8080)
+    exfil_server.run_server(debug=True)
