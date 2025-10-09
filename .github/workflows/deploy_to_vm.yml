@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  TARGET_DIR: /srv/bsidesnova
+  TARGET_DIR: /src/bsidesnova
   SERVICE_NAME: exfil.service
   PYTHON_BIN: /usr/bin/python3
 
@@ -29,6 +29,8 @@ jobs:
           host: ${{ secrets.AZURE_VM_HOST }}
           username: ${{ secrets.AZURE_VM_USER }}
           key_path: "private_key.pem"
+          # Export GHA env vars into remote shell
+          envs: TARGET_DIR
           script: |
             set -e
             sudo mkdir -p "${TARGET_DIR}"
@@ -53,11 +55,13 @@ jobs:
           username: ${{ secrets.AZURE_VM_USER }}
           key_path: "private_key.pem"
           script_stop: true
+          # Export needed envs to remote
+          envs: TARGET_DIR,PYTHON_BIN,SERVICE_NAME
           script: |
             set -euo pipefail
             cd "${TARGET_DIR}"
             if [ ! -d ".venv" ]; then
-              ${PYTHON_BIN} -m venv .venv
+              "${PYTHON_BIN}" -m venv .venv
             fi
             . .venv/bin/activate
             python -m pip install --upgrade pip setuptools wheel
@@ -79,6 +83,7 @@ jobs:
           host: ${{ secrets.AZURE_VM_HOST }}
           username: ${{ secrets.AZURE_VM_USER }}
           key_path: "private_key.pem"
+          envs: SERVICE_NAME
           script: |
-            sudo systemctl status ${SERVICE_NAME} --no-pager || true
-            sudo journalctl -u ${SERVICE_NAME} -n 200 --no-pager || true
+            sudo systemctl status "${SERVICE_NAME}" --no-pager || true
+            sudo journalctl -u "${SERVICE_NAME}" -n 200 --no-pager || true
