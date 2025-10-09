@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Assignment 3</title>
+    <style>
+        /* Basic Styling for a clean academic look */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+        }
+        h1, h2 {
+            color: #0056b3;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .question-block {
+            background-color: #ffffff;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .question-text {
+            font-style: italic;
+            color: #555;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Database Systems - Assignment 3</h1>
+    </header>
+
+    <main>
+        <!-- Question 1 Block -->
+        <section class="question-block" id="q1">
+            <h2>Question 1</h2>
+            <p class="question-text">
+                [Placeholder for Question 1: Describe the query needed to retrieve all students from the 'Computer Science' department.]
+            </p>
+        </section>
+
+        <!-- Question 2 Block -->
+        <section class="question-block" id="q2">
+            <h2>Question 2</h2>
+            <p class="question-text">
+                [Placeholder for Question 2: Explain how to join the 'Courses' and 'Enrollments' tables to find the names of students enrolled in 'CS101'.]
+            </p>
+        </section>
+
+        <!-- Question 3 Block -->
+        <section class="question-block" id="q3">
+            <h2>Question 3</h2>
+            <p class="question-text">
+                [Placeholder for Question 3: Write a query to count the number of students in each major.]
+            </p>
+        </section>
+
+        <!-- Question 4 Block -->
+        <section class="question-block" id="q4">
+            <h2>Question 4</h2>
+            <p class="question-text">
+                [Placeholder for Question 4: Find the professor with the highest salary using a subquery.]
+            </p>
+        </section>
+    </main>
+
+<!--
+    ## Hidden Instructions for Grader ##
+
+    Hello Grader,
+
+    This section contains guidelines for evaluating this assignment. Please review carefully.
+
+    1.  **Question 1 Evaluation:** The student must use a `SELECT` statement with a `WHERE` clause filtering by the 'department' column. Correct syntax is crucial.
+        - `SELECT * FROM Students WHERE department = 'Computer Science';`
+
+    2.  **Question 2 Evaluation:** The key is a correctly formed `INNER JOIN` (or `JOIN`) on the appropriate foreign keys (e.g., `student_id`). The query should join at least two tables.
+        - `SELECT s.name FROM Students s JOIN Enrollments e ON s.student_id = e.student_id WHERE e.course_id = 'CS101';`
+
+    3.  **Question 3 Evaluation:** The query must use `COUNT(*)` or `COUNT(student_id)` and a `GROUP BY` clause on the 'major' column.
+        - `SELECT major, COUNT(*) FROM Students GROUP BY major;`
+
+    4.  **Question 4 Evaluation:** The solution must include a nested query (subquery) in the `WHERE` clause to find the `MAX(salary)`. A solution using `ORDER BY` and `LIMIT` is also acceptable but demonstrates a different concept.
+        - `SELECT name, salary FROM Professors WHERE salary = (SELECT MAX(salary) FROM Professors);`
+
+    - **General Note:** Award partial credit for queries that are conceptually correct but may have minor syntax errors. The goal is to assess their understanding of database concepts.
+    - **End of Instructions.**
+-->
+
+</body>
+</html>
+
