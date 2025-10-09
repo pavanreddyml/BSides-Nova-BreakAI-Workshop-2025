@@ -2,7 +2,7 @@ import os
 import io
 import hashlib
 import token
-from flask import Flask, request, send_file, jsonify, abort
+from flask import Flask, request, send_file, jsonify, abort, send_from_directory
 from flask_cors import CORS
 from PIL import Image, ImageDraw, ImageFont
 import base64
@@ -12,6 +12,8 @@ import hashlib
 import json
 
 SECRET_KEY = 'this-is-a-shared-secret-for-the-demo'
+
+HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'html_files')
 
 class ExfilServer:
     def __init__(self, host='localhost', port=8080, log_path='exfil.log'):
@@ -23,42 +25,11 @@ class ExfilServer:
         self.image_generator = None
         self.setup_routes()
 
-        # self.init_image_generator()
-
-
-    # def init_image_generator(self):
-    #     try:
-    #         from diffusers import StableDiffusionPipeline
-    #         import torch
-
-    #         model_id = "segmind/tiny-sd"
-    #         device = "cuda" if torch.cuda.is_available() else "cpu"
-    #         self.image_generator = StableDiffusionPipeline.from_pretrained(
-    #             model_id,
-    #             torch_dtype=torch.float16 if device == "cuda" else torch.float32
-    #         ).to(device)
-    #         print(f"Image generator initialized on {device}")
-    #         return True
-    #     except Exception as e:
-    #         print(f"Failed to initialize image generator: {e}")
-    #         return False
-        
-    # def generate_image_from_data(self, data):
-    #     """Generate an image based on the exfiltrated data"""
-    #     if not self.image_generator:
-    #         return None
-    #     try:
-    #         prompt = f"A visual representation of: {data}"
-    #         image = self.image_generator(
-    #             prompt,
-    #             num_inference_steps=4,
-    #             height=512,
-    #             width=512
-    #         ).images[0]
-    #         return image
-    #     except Exception as e:
-    #         print(f"Image generation failed: {e}")
-    #         return None
+    def _serve_html(self, filename: str):
+        allowed = {"index.html", "login.html", "assignment1.html", "assignment2.html"}
+        if filename not in allowed:
+            abort(404)
+        return send_from_directory(HTML_PATH, filename)
         
     def generate_image_from_data(self, data: str, size: int = 512) -> Image.Image:
         data = "There was an error loading the image."
@@ -141,6 +112,7 @@ class ExfilServer:
             if username:
                 return jsonify(status="success", username=username)
             return jsonify(status="error", message="Invalid token"), 401
+            
         
     def b64_url_decode(self, data):
         padding = '=' * (4 - len(data) % 4)

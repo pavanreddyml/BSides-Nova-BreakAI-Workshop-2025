@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy to gh-pages branch
 
 on:
   push:
@@ -6,30 +6,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Prepare site files
+      - name: Build site (copy files)
         run: |
           rm -rf dist
           mkdir -p dist
-          # Copy pages
           cp assets/webpages/assignment1.html dist/
           cp assets/webpages/assignment2.html dist/
           cp assets/webpages/login.html dist/
-          # Minimal index that forwards to login.html
           cat > dist/index.html <<'HTML'
           <!doctype html>
           <meta charset="utf-8">
@@ -37,18 +28,10 @@ jobs:
           <link rel="canonical" href="login.html">
           HTML
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          path: dist
-
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: dist
+          publish_branch: gh-pages
+          force_orphan: true
