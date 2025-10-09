@@ -7,6 +7,6 @@ services:
       dockerfile: docker/exfilserver/Dockerfile
     container_name: exfilserver
     ports:
-      - "8080:8080"
+      - "2500:2500"
     environment:
       PYTHONPATH: "/usr/src/app"

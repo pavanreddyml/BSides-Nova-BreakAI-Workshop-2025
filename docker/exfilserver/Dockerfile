@@ -15,7 +15,7 @@ RUN python -m playwright install --with-deps chromium
 
 COPY . .
 
-EXPOSE 8080
+EXPOSE 2500
 
 CMD ["python", "bsidesnova/bsidesnova/server/exfil_server.py"]
     

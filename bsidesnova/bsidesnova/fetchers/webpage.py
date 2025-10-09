@@ -3,7 +3,7 @@ import requests
 from .base import Fetcher
 
 class WebpageFetcher():
-    def __init__(self, server_url="http://localhost:8080/fetch-webpage"):
+    def __init__(self, server_url="http://localhost:2500/fetch-webpage"):
         self.server_url = server_url
 
     def fetch(self, url: str) -> str:
