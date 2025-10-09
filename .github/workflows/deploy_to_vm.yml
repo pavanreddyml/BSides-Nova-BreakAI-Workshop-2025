@@ -22,21 +22,18 @@ jobs:
           echo "${{ secrets.AZURE_SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
 
-      # Ensure target exists and is writable by SSH user
       - name: Prepare target directory with sudo
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.AZURE_VM_HOST }}
           username: ${{ secrets.AZURE_VM_USER }}
           key_path: "private_key.pem"
-          # Export GHA env vars into remote shell
           envs: TARGET_DIR
           script: |
             set -e
             sudo mkdir -p "${TARGET_DIR}"
             sudo chown -R "$USER":"$USER" "${TARGET_DIR}"
 
-      # Copy without remote delete (rm:false avoids privileged remove)
       - name: Copy project to VM
         uses: appleboy/scp-action@v0.1.4
         with:
@@ -48,31 +45,42 @@ jobs:
           rm: false
           strip_components: 0
 
-      - name: Install deps & restart service
+      - name: Install deps globally & restart service (no venv)
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.AZURE_VM_HOST }}
           username: ${{ secrets.AZURE_VM_USER }}
           key_path: "private_key.pem"
           script_stop: true
-          # Export needed envs to remote
           envs: TARGET_DIR,PYTHON_BIN,SERVICE_NAME
           script: |
             set -euo pipefail
+            # Ensure base tools exist
+            if ! command -v curl >/dev/null 2>&1; then
+              sudo apt-get update -y
+              sudo apt-get install -y curl
+            fi
+            if ! "${PYTHON_BIN}" -m pip -V >/dev/null 2>&1; then
+              sudo apt-get update -y
+              sudo apt-get install -y python3-pip
+            fi
+
             cd "${TARGET_DIR}"
-            if [ ! -d ".venv" ]; then
-              "${PYTHON_BIN}" -m venv .venv
-            fi
-            . .venv/bin/activate
-            python -m pip install --upgrade pip setuptools wheel
+
+            # Global installs (NO venv)
+            sudo "${PYTHON_BIN}" -m pip install --upgrade pip setuptools wheel
             if [ -f "requirements.txt" ]; then
-              pip install -r requirements.txt
+              sudo "${PYTHON_BIN}" -m pip install -r requirements.txt
             else
-              pip install flask flask-cors pillow
+              sudo "${PYTHON_BIN}" -m pip install flask flask-cors pillow
             fi
+
+            # Restart service
             sudo systemctl daemon-reload || true
             sudo systemctl enable "${SERVICE_NAME}"
             sudo systemctl restart "${SERVICE_NAME}"
+
+            # Health check
             sleep 2
             curl -fsS "http://127.0.0.1:8080/fetch-logs/?n=1" >/dev/null || (sudo journalctl -u "${SERVICE_NAME}" --no-pager -n 100; exit 1)
 
