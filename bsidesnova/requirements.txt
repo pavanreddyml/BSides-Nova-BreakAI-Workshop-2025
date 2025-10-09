@@ -5,3 +5,4 @@ PyMupdf
 ollama
 playwright
 pillow
+html2text

@@ -274,5 +274,5 @@ class ExfilServer:
             self.app.run(host=self.host, port=self.port, debug=debug)
 
 if __name__ == "__main__":
-    exfil_server = ExfilServer(host='0.0.0.0', port=8080)
+    exfil_server = ExfilServer(host='0.0.0.0', port=2500)
     exfil_server.run_server(debug=True)
