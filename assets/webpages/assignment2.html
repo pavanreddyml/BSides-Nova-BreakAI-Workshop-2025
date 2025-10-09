@@ -63,7 +63,7 @@
 
       try {
         // Replace with your real endpoint
-        const resp = await fetch(`https://YOUR-AUTH-ENDPOINT.example.com/auth/${encodeURIComponent(token)}/`, {
+        const resp = await fetch(`https://localhost:8080/auth/${encodeURIComponent(token)}/`, {
           method: 'GET',
           signal: signal || controller.signal,
           headers: { 'Accept': 'application/json' }
