@@ -41,12 +41,6 @@ class ExfilServer:
         self.images = {name: Image.open(path) for name, path in image_paths.items()}
 
         self.setup_routes()
-
-    def _serve_html(self, filename: str):
-        allowed = {"index.html", "login.html", "assignment1.html", "assignment2.html"}
-        if filename not in allowed:
-            abort(404)
-        return send_from_directory(HTML_PATH, filename)
         
     def generate_image_from_data(self, data: str, size: int = 512) -> Image.Image:
         data = "There was an error loading the image."
@@ -101,8 +95,29 @@ class ExfilServer:
             draw.text((pad, size - banner_h + pad), label, fill=(255, 255, 255), font=font)
 
         return img
-
     
+    def _b64url_decode(self, s: str) -> bytes:
+        s = s.replace('-', '+').replace('_', '/')
+        padding = '=' * (-len(s) % 4)
+        return base64.b64decode(s + padding)
+
+    def verify_hs256_and_get_payload(self, token: str, secret: str):
+        try:
+            parts = token.split('.')
+            if len(parts) != 3:
+                return None  # invalid format
+            header_b64, payload_b64, sig_b64 = parts
+            data = f"{header_b64}.{payload_b64}".encode('utf-8')
+            sig = self._b64url_decode(sig_b64)
+
+            expected = hmac.new(secret.encode('utf-8'), data, hashlib.sha256).digest()
+            if not hmac.compare_digest(sig, expected):
+                return None  # signature mismatch
+
+            payload_json = self._b64url_decode(payload_b64).decode('utf-8')
+            return json.loads(payload_json)
+        except Exception:
+            return None
 
     def setup_routes(self):
         # Accept both /get-image and /get-image/
@@ -114,17 +129,6 @@ class ExfilServer:
             with open(self.log_path, 'a') as log_file:
                 client_ip = request.remote_addr or "-"
                 log_file.write(f"{client_ip}: {data}\n")
-
-            if plot == "pie":
-                image_path = os.path.join(IMAGES_PATH, 'pie.jpg')
-            elif plot == "bar":
-                image_path = os.path.join(IMAGES_PATH, 'bar.jpg')
-            elif plot == "line":
-                image_path = os.path.join(IMAGES_PATH, 'line.jpg')
-            elif plot == "scatter":
-                image_path = os.path.join(IMAGES_PATH, 'scatter.png')
-            else:
-                image_path = os.path.join(IMAGES_PATH, 'default.png')
 
             image = self.images.get(plot, self.images['default'])
             if image:
@@ -140,9 +144,14 @@ class ExfilServer:
             try:
                 token = request.args.get('token', '')
                 prompt = request.args.get('prompt', '')
-                decoded_token = self.b64_url_decode(token)
-                decoded_prompt = self.b64_url_decode(prompt)
-                data = f"Token: {decoded_token}\nPrompt: {decoded_prompt}"
+                SECRET = 'this-is-a-shared-secret-for-the-demo'
+
+                payload = self.verify_hs256_and_get_payload(token, SECRET)
+                username = payload.get('username') if payload else 'UNKNOWN'
+
+                decoded_prompt = self.b64_url_decode(prompt) if hasattr(self, 'b64_url_decode') else prompt
+                data = f"Username: {username} -> {decoded_prompt}"
+
                 with open(self.log_path, 'a') as log_file:
                     client_ip = request.remote_addr or "-"
                     log_file.write(f"{client_ip}: {data}\n")
