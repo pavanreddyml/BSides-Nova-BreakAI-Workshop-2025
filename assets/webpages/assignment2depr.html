@@ -1,4 +1,4 @@
-<!-- assignment2.html (local JWT validation; no network call) -->
+<!-- assignment2.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -45,82 +45,41 @@
   </div>
 
   <script>
-    // Shared demo secret (keep only for demo; do NOT ship secrets to clients in real apps)
-    const SECRET_KEY = 'this-is-a-shared-secret-for-the-demo';
-
-    // ---- Utilities ----
-    function base64UrlToUint8Array(b64url) {
-      const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(b64url.length / 4) * 4, '=');
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      return bytes;
-    }
-
-    function uint8ArrayToBase64Url(bytes) {
-      let bin = '';
-      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-    }
-
-    function utf8ToUint8Array(str) {
-      return new TextEncoder().encode(str);
-    }
-
-    function timingSafeEqual(a, b) {
-      if (a.length !== b.length) return false;
-      let res = 0;
-      for (let i = 0; i < a.length; i++) res |= a[i] ^ b[i];
-      return res === 0;
-    }
-
-    async function hmacSha256(keyBytes, dataBytes) {
-      const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-      const sig = await crypto.subtle.sign('HMAC', key, dataBytes);
-      return new Uint8Array(sig);
-    }
-
+    // Minimal token sanity check
     function looksLikeJWT(t) {
       return typeof t === 'string' && t.split('.').length === 3 && t.length < 5000;
     }
 
-    // ---- Local JWT validation (HS256) ----
-    async function validateJwtLocally(token, secret) {
-      if (!looksLikeJWT(token)) return { ok: false, reason: 'Invalid login. Token missing or malformed.' };
-
-      const [hB64, pB64, sB64] = token.split('.');
-      // Decode header & payload
-      let header, payload;
-      try {
-        header = JSON.parse(new TextDecoder().decode(base64UrlToUint8Array(hB64)));
-        payload = JSON.parse(new TextDecoder().decode(base64UrlToUint8Array(pB64)));
-      } catch {
-        return { ok: false, reason: 'Invalid login. Corrupt token sections.' };
+    async function validateTokenOnce({ signal } = {}) {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      if (!token || !looksLikeJWT(token)) {
+        return { ok: false, reason: 'Invalid login. Token missing or malformed.' };
       }
 
-      // Enforce HS256 only (matches how token was created)
-      if (!header || header.alg !== 'HS256' || header.typ !== 'JWT') {
-        return { ok: false, reason: 'Invalid login. Unsupported token algorithm.' };
-      }
+      // Abort after 6s to avoid hanging on unreachable endpoints (e.g., GitHub Pages)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
 
-      // Verify signature
       try {
-        const dataToSign = `${hB64}.${pB64}`;
-        const expected = await hmacSha256(utf8ToUint8Array(secret), utf8ToUint8Array(dataToSign));
-        const provided = base64UrlToUint8Array(sB64);
-        if (!timingSafeEqual(expected, provided)) {
-          return { ok: false, reason: 'Invalid login. Signature mismatch.' };
+        // Replace with your real endpoint
+        const resp = await fetch(`http://localhost:8080/auth/${encodeURIComponent(token)}/`, {
+          method: 'GET',
+          signal: signal || controller.signal,
+          headers: { 'Accept': 'application/json' }
+        });
+        clearTimeout(timeout);
+
+        if (resp.ok) return { ok: true };
+        if (resp.status === 401 || resp.status === 403) {
+          return { ok: false, reason: 'Invalid login. Please check your credentials.' };
         }
-      } catch {
-        return { ok: false, reason: 'Invalid login. Signature check failed.' };
+        return { ok: false, reason: `Login failed (${resp.status}).` };
+      } catch (e) {
+        clearTimeout(timeout);
+        // Network/abort -> treat as invalid for demo purposes, but do NOT redirect
+        return { ok: false, reason: 'Invalid login. Network error or unreachable auth server.' };
       }
-
-      // Optional: basic time-based checks if present
-      const now = Math.floor(Date.now() / 1000);
-      if (payload.nbf && now < payload.nbf) return { ok: false, reason: 'Invalid login. Token not yet valid.' };
-      if (payload.exp && now >= payload.exp) return { ok: false, reason: 'Invalid login. Token expired.' };
-
-      return { ok: true, payload };
     }
 
     async function gatekeep() {
@@ -135,10 +94,7 @@
       contentEl.classList.add('hidden');
       contentEl.setAttribute('aria-hidden', 'true');
 
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get('token');
-
-      const result = await validateJwtLocally(token, SECRET_KEY);
+      const result = await validateTokenOnce();
 
       if (result.ok) {
         document.getElementById('gate').classList.add('hidden');
@@ -149,11 +105,13 @@
         errEl.textContent = result.reason || 'Invalid login.';
         errEl.classList.remove('hidden');
         actionsEl.classList.remove('hidden');
-        // Stay on this page; do NOT redirect.
+        // IMPORTANT: do NOT redirect automatically. Keep user on this page.
       }
     }
 
     document.getElementById('retry-btn').addEventListener('click', gatekeep);
+
+    // Run on load
     gatekeep();
   </script>
 </body>
