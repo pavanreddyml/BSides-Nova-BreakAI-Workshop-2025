@@ -87,6 +87,7 @@ Output the most suitable graph for the data and the reasoning. Then provide the 
 <p>Next, we match the chart type to our goal. In this case, the goal is to show proportions or parts of a whole (since we are comparing categories). </p>
 <p>According to our guide, for categorical data with the goal of showing proportions, the best chart type is a <strong>Pie Chart</strong>.</p>
 <p>The data will always be list of tuples, where each tuple is a row of data. So, we will need to encode the categorical and numerical values into the <code>data</code> parameter.</p>
+
 <h1><img alt="Requested image" src="http://localhost:8080/get-image/?data=25_40_35_Compact_SUV_Truck&plot=bar" /></h1>
 
 ---
