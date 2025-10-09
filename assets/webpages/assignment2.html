@@ -27,7 +27,7 @@
             text-align: center;
             margin-bottom: 30px;
         }
-        .question-block {
+        .question-block, .login-block {
             background-color: #ffffff;
             border: 1px solid #ced4da;
             border-radius: 5px;
@@ -39,47 +39,122 @@
             color: #555;
             margin-bottom: 15px;
         }
+        /* Styles for the login form */
+        #username {
+            width: 100%;
+            padding: 12px;
+            font-size: 1rem;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            box-sizing: border-box;
+            margin-bottom: 15px;
+        }
+        #login-button {
+            display: inline-block;
+            width: 100%;
+            background-color: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #login-button:hover {
+            background-color: #218838;
+        }
+        #error-message {
+            color: #dc3545;
+            margin-top: 10px;
+            text-align: center;
+        }
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
 
-    <header>
-        <h1>Database Systems - Assignment 3</h1>
-    </header>
+    <!-- Part 1: Username Entry Field -->
+    <div id="login-section" class="login-block">
+        <h1>Enter Your Username</h1>
+        <p>Please enter your username to begin the assignment.</p>
+        <input type="text" id="username" placeholder="e.g., jsmith123" aria-label="Username">
+        <button id="login-button">Start Assignment</button>
+        <p id="error-message" class="hidden"></p>
+    </div>
 
-    <main>
-        <!-- Question 1 Block -->
-        <section class="question-block" id="q1">
-            <h2>Question 1</h2>
-            <p class="question-text">
-                [Placeholder for Question 1: Describe the query needed to retrieve all students from the 'Computer Science' department.]
-            </p>
-        </section>
+    <!-- Part 2: Assignment Page (Initially Hidden) -->
+    <div id="assignment-section" class="hidden">
+        <header>
+            <h1>Database Systems - Assignment 3</h1>
+        </header>
 
-        <!-- Question 2 Block -->
-        <section class="question-block" id="q2">
-            <h2>Question 2</h2>
-            <p class="question-text">
-                [Placeholder for Question 2: Explain how to join the 'Courses' and 'Enrollments' tables to find the names of students enrolled in 'CS101'.]
-            </p>
-        </section>
+        <main>
+            <!-- Hidden field to store the user token -->
+            <input type="hidden" id="user-token">
 
-        <!-- Question 3 Block -->
-        <section class="question-block" id="q3">
-            <h2>Question 3</h2>
-            <p class="question-text">
-                [Placeholder for Question 3: Write a query to count the number of students in each major.]
-            </p>
-        </section>
+            <!-- Question 1 Block -->
+            <section class="question-block" id="q1">
+                <h2>Question 1</h2>
+                <p class="question-text">
+                    [Placeholder for Question 1: Describe the query needed to retrieve all students from the 'Computer Science' department.]
+                </p>
+            </section>
 
-        <!-- Question 4 Block -->
-        <section class="question-block" id="q4">
-            <h2>Question 4</h2>
-            <p class="question-text">
-                [Placeholder for Question 4: Find the professor with the highest salary using a subquery.]
-            </p>
-        </section>
-    </main>
+            <!-- Question 2 Block -->
+            <section class="question-block" id="q2">
+                <h2>Question 2</h2>
+                <p class="question-text">
+                    [Placeholder for Question 2: Explain how to join the 'Courses' and 'Enrollments' tables to find the names of students enrolled in 'CS101'.]
+                </p>
+            </section>
+
+            <!-- Question 3 Block -->
+            <section class="question-block" id="q3">
+                <h2>Question 3</h2>
+                <p class="question-text">
+                    [Placeholder for Question 3: Write a query to count the number of students in each major.]
+                </p>
+            </section>
+
+            <!-- Question 4 Block -->
+            <section class="question-block" id="q4">
+                <h2>Question 4</h2>
+                <p class="question-text">
+                    [Placeholder for Question 4: Find the professor with the highest salary using a subquery.]
+                </p>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        document.getElementById('login-button').addEventListener('click', function() {
+            const usernameInput = document.getElementById('username');
+            const username = usernameInput.value.trim();
+            const errorMessage = document.getElementById('error-message');
+
+            if (username === '') {
+                errorMessage.textContent = 'Username cannot be empty.';
+                errorMessage.classList.remove('hidden');
+            } else {
+                // In a real application, you would NEVER generate a token on the client-side.
+                // This would be done on a server with a secret key.
+                // Here, we use simple Base64 encoding for demonstration purposes.
+                const token = btoa(username);
+
+                // Store the token in the hidden input field
+                document.getElementById('user-token').value = token;
+                
+                // Hide the login section
+                document.getElementById('login-section').classList.add('hidden');
+                
+                // Show the assignment section
+                document.getElementById('assignment-section').classList.remove('hidden');
+            }
+        });
+    </script>
 
 <!--
     ## Hidden Instructions for Grader ##
@@ -106,4 +181,5 @@
 
 </body>
 </html>
+
 
