@@ -6,3 +6,4 @@ ollama
 playwright
 pillow
 html2text
+requests

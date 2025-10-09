@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /usr/src/app
 
-RUN pip install flask flask-cors pillow playwright html2text
+RUN pip install flask flask-cors pillow playwright html2text, requests
 RUN python -m playwright install --with-deps chromium
 
 COPY . .
