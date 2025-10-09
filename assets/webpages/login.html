@@ -25,19 +25,13 @@
     </div>
 
     <script>
-        // WARNING: This is for DEMO purposes only.
-        // Exposing a secret key in client-side JavaScript is a major security vulnerability.
         const SECRET_KEY = 'this-is-a-shared-secret-for-the-demo';
 
-        // --- Helper functions for JWT-like token creation ---
         function base64UrlEncode(str) {
-            // btoa is a built-in browser function for Base64 encoding.
-            // The replacements make it URL-safe.
             return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
         }
 
         function stringToArrayBuffer(str) {
-            // Converts a string into a buffer of bytes, needed for the Web Crypto API.
             const buf = new ArrayBuffer(str.length);
             const bufView = new Uint8Array(buf);
             for (let i = 0, strLen = str.length; i < strLen; i++) {
@@ -47,11 +41,8 @@
         }
 
         async function createToken(username, secret) {
-            // 1. Create Header (specifies the algorithm and token type)
             const header = { alg: 'HS256', typ: 'JWT' };
             const headerB64 = base64UrlEncode(JSON.stringify(header));
-
-            // 2. Create Payload (contains the actual data, e.g., the username)
             const payload = { username: username };
             const payloadB64 = base64UrlEncode(JSON.stringify(payload));
             
@@ -60,26 +51,18 @@
             const dataToSign = `${headerB64}.${payloadB64}`;
             const secretKeyData = stringToArrayBuffer(secret);
             const dataToSignBuffer = stringToArrayBuffer(dataToSign);
-
-            // Import the secret key for HMAC (Hash-based Message Authentication Code)
             const key = await window.crypto.subtle.importKey(
                 'raw', secretKeyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
             );
-
-            // Sign the data using the imported key
             const signatureBuffer = await window.crypto.subtle.sign('HMAC', key, dataToSignBuffer);
-            
-            // Convert the binary signature into a Base64URL string
             const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
                 .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-            
-            // 4. Concatenate all three parts to form the final token string
+      
             return `${dataToSign}.${signatureB64}`;
         }
 
-        // --- Form submission handler ---
         document.getElementById('login-form').addEventListener('submit', async (event) => {
-            event.preventDefault(); // Prevents the form from doing a normal page reload
+            event.preventDefault();
             
             const username = document.getElementById('username').value.trim();
             if (!username) {
@@ -87,7 +70,6 @@
                 return;
             }
 
-            // Create the token and then redirect the browser to the new URL
             const token = await createToken(username, SECRET_KEY);
             window.location.href = `/assignment2.html/${token}/`;
         });
