@@ -7,7 +7,7 @@ from PIL import Image
 class AdversarialSelector:
     def __init__(self, root_path):
         self.root_path = root_path
-        
+
     def attacker_selector(self, config):
         import tensorflow as tf
         from adversarial_lab.arsenal.adversarial.whitebox import FastSignGradientMethodAttack, ProjectedGradientDescentAttack, CarliniWagnerAttack, DeepFoolAttack, SmoothFoolAttack
@@ -18,11 +18,11 @@ class AdversarialSelector:
         attack = config["attack"]
         attack_params = config["attack_params"]
 
-        image_array = config.get("image_array", None) 
+        image_array = config.get("image_array", None)
         image_class = config["image_class"]
         image_name = config["image_name"]
         target_class_idx = config["target_class_idx"]
-        
+
 
 
         # Get all model related data
@@ -45,9 +45,9 @@ class AdversarialSelector:
             img_arr = image_array
             img_arr = tf.image.resize(img_arr, input_shape[:2]).numpy()
         else:
-            img_arr = self.get_image(directory=dataset_dir_map[model_name], 
-                                     image_class=image_class, 
-                                     image_name=image_name, 
+            img_arr = self.get_image(directory=dataset_dir_map[model_name],
+                                     image_class=image_class,
+                                     image_name=image_name,
                                      input_shape=input_shape)
 
 
@@ -66,7 +66,7 @@ class AdversarialSelector:
                 resized_image = tf.image.resize(input_tensor, input_shape[:2])
                 batch_image = tf.expand_dims(resized_image, axis=0)
                 return preprocess_fn(batch_image)
-            
+
             if attack == "Fast Sign Gradient Method":
                 attacker = FastSignGradientMethodAttack
             elif attack == "Projected Gradient Descent":
@@ -77,7 +77,37 @@ class AdversarialSelector:
                 attacker = DeepFoolAttack
             elif attack == "Smooth Fool":
                 attacker = SmoothFoolAttack
-                
+
+            from tensorflow.keras.utils import get_file
+            path = get_file(
+                "imagenet_class_index.json",
+                origin="https://storage.googleapis.com/download.tensorflow.org/data/imagenet_class_index.json",
+            )
+            with open(path, "r") as f:
+                mapping = json.load(f)
+
+            def decode_top(preds, top=5):
+                mapping = globals().get("IMAGENET_CLASS_INDEX")
+                if mapping is None:
+                    # Fallback: load keras mapping
+                    from tensorflow.keras.utils import get_file
+                    path = get_file(
+                        "imagenet_class_index.json",
+                        origin="https://storage.googleapis.com/download.tensorflow.org/data/imagenet_class_index.json",
+                    )
+                    with open(path, "r") as f:
+                        mapping = json.load(f)
+                wnid_to_idx = {v[0]: int(k) for k, v in mapping.items()}
+
+                out = []
+                for sample in decode_preds(preds, top=top):
+                    rows = []
+                    for wnid, name, conf in sample:
+                        arr_idx = wnid_to_idx.get(str(wnid), -1)
+                        rows.append((arr_idx, str(name), float(conf)))
+                    out.append(rows)
+                return out
+
 
             return {
                 "attacker": attacker,
@@ -86,10 +116,11 @@ class AdversarialSelector:
                 "attack_params": attack_params,
                 "input_shape": input_shape,
                 "sample": img_arr,
-                "decode_preds": decode_preds,
+                "decode_preds": decode_top,
                 "target_class": target_class_idx,
+                "class_dict": mapping
             }
-            
+
         if category == "blackbox":
             if attack == "Finite Difference":
                 attacker = FiniteDifferenceAttack
@@ -103,16 +134,17 @@ class AdversarialSelector:
             return {
                 "attacker": attacker,
                 "model": model,
-                "preprocess": preprocess,
+                "preprocess": None,
                 "attack_params": attack_params,
                 "input_shape": input_shape,
                 "sample": img_arr.astype(int),
                 "decode_preds": decode_preds,
                 "target_class": target_class_idx,
+                "class_dict": {str(i): str(i) for i in range(10)}
             }
 
     def get_model(self, dataset):
-        
+
         if dataset == "inception":
             from tensorflow.keras.applications import InceptionV3
             from tensorflow.keras.applications.inception_v3 import preprocess_input, decode_predictions
@@ -151,22 +183,40 @@ class AdversarialSelector:
             model = tf.keras.models.load_model(os.path.join(self.root_path, "assets/models/mnist_digits.h5"))
 
             def pred_fn(samples, *args, **kwargs):
-                samples = np.array(samples)
-                preds = model.predict(samples, verbose=0)
+                x = np.asarray(samples, dtype=np.float32)
+
+                # Convert RGB -> grayscale using NumPy only
+                if x.ndim == 4 and x.shape[-1] == 3:              # (N, 28, 28, 3) or (1, 28, 28, 3)
+                    x = x.mean(axis=-1)
+                elif x.ndim == 3 and x.shape[0] == 3 and x.shape[1:] == (28, 28):  # (3, 28, 28)
+                    x = x.mean(axis=0, keepdims=True)
+
+                # Ensure shape (N, 28, 28)
+                if x.ndim == 2 and x.shape == (28, 28):           # single image
+                    x = x.reshape(1, 28, 28)
+                elif x.ndim == 3 and x.shape[-2:] == (28, 28):    # already batched 2D
+                    x = x.reshape(-1, 28, 28)
+                else:
+                    # Last-resort reshape if dimensions are compatible
+                    x = x.reshape(-1, 28, 28)
+
+                x = x.astype(np.float32)
+
+                preds = model.predict(x, verbose=0)
                 return [pred for pred in preds]
-            
-            def decode_predictions(preds, top=1):
+
+            def decode_predictions(preds, top=5):
                 results = []
                 for pred in preds:
                     top_indices = np.argsort(pred)[-top:][::-1]
-                    top_scores = [(str(i), float(pred[i])) for i in top_indices]
+                    top_scores = [(str(i), str(i), float(pred[i])) for i in top_indices]
                     results.append(top_scores)
                 return results
-            
+
             input_shape = (28, 28, 1)
             return {
                 "model": pred_fn,
-                "preprocess_input": preprocess_input,
+                "preprocess_input": None,
                 "decode_predictions": decode_predictions,
                 "input_shape": input_shape
             }

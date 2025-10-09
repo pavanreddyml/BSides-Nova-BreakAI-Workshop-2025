@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+import ast
 from collections.abc import Iterable as IterableABC
 from dataclasses import dataclass
 from pathlib import Path
@@ -411,7 +412,11 @@ class AttackSelectorUI:
             if not name:
                 continue
             value = getattr(widget, "value", None)
-            params[name] = value
+            # If we attached annotation/default metadata, convert strings to proper types
+            annotation = getattr(widget, "_param_annotation", None)
+            default = getattr(widget, "_param_default", inspect._empty)
+            converted = self._convert_widget_value(value, annotation, default)
+            params[name] = converted
         return params
 
     def _discover_attacks(self, category: str) -> Dict[str, AttackInfo]:
@@ -449,9 +454,148 @@ class AttackSelectorUI:
             widget = self._widget_for_parameter(name, parameter)
             if widget is None:
                 continue
+            # Attach metadata to widget so we can parse/convert at collection time
             widget._param_name = name
+            widget._param_annotation = parameter.annotation
+            widget._param_default = parameter.default
             widgets_list.append(widget)
         return widgets_list
+
+    # ------------------------------------------------------------------
+    # Value conversion helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _try_number_cast(s: str):
+        """Try to cast a string to int or float; fallback to original string."""
+        s = s.strip()
+        if not s:
+            return s
+        # Try int
+        try:
+            if s.isdigit() or (s.startswith("-") and s[1:].isdigit()):
+                return int(s)
+        except Exception:
+            pass
+        # Try float
+        try:
+            return float(s)
+        except Exception:
+            return s
+
+    @staticmethod
+    def _convert_widget_value(value: Any, annotation: Any, default: Any) -> Any:
+        """Convert widget.value (often str) into the annotated/expected Python type.
+
+        Strategy:
+        - If value is already not a str (e.g., IntText, FloatText, Checkbox), return it.
+        - If value is None or empty string:
+            - If default is inspect._empty and annotation allows None, return None.
+            - If default provided, return default.
+        - If value is a str: first attempt ast.literal_eval to parse tuples/lists/numbers/booleans.
+          If that fails, fall back to comma-split for sequences, or numeric cast for scalars.
+        """
+        # Quick pass: already correct type
+        if value is None:
+            # Interpret empty/None depending on default/annotation
+            if default is not inspect._empty:
+                return default
+            # If optional in annotation, return None
+            origin = get_origin(annotation)
+            if origin is not None and type(None) in get_args(annotation):
+                return None
+            return None
+
+        if not isinstance(value, str):
+            return value
+
+        s = value.strip()
+        if s == "":
+            if default is not inspect._empty:
+                return default
+            origin = get_origin(annotation)
+            if origin is not None and type(None) in get_args(annotation):
+                return None
+            return None
+
+        # If user typed something that is obviously None-ish
+        if s.lower() in {"none", "null", "nil"}:
+            return None
+
+        # Try safe literal eval first (handles tuples, lists, numbers, dicts)
+        try:
+            lit = ast.literal_eval(s)
+            return lit
+        except Exception:
+            pass
+
+        # Inspect annotation for sequence-like hints
+        origin = get_origin(annotation)
+        if origin in {list, tuple, set} or (isinstance(origin, type) and issubclass(origin, IterableABC)):
+            # comma separated
+            parts = [p.strip() for p in s.split(",") if p.strip() != ""]
+            # Try to cast elements to numbers where appropriate
+            args = get_args(annotation)
+            elem_type = None
+            if args:
+                # if Optional[...,] or Union, pick first non-None
+                unwrapped = [a for a in args if a is not type(None)]
+                if unwrapped:
+                    elem_type = unwrapped[0]
+            converted = []
+            for p in parts:
+                # If elem_type is a basic numeric type, cast accordingly
+                if elem_type in {int, float, str, bool}:
+                    try:
+                        if elem_type is int:
+                            converted.append(int(float(p)))
+                        elif elem_type is float:
+                            converted.append(float(p))
+                        elif elem_type is bool:
+                            converted.append(p.lower() in {"true", "1", "yes"})
+                        else:
+                            converted.append(p)
+                    except Exception:
+                        converted.append(AttackSelectorUI._try_number_cast(p))
+                else:
+                    converted.append(AttackSelectorUI._try_number_cast(p))
+            if origin is tuple:
+                return tuple(converted)
+            if origin is set:
+                return set(converted)
+            return converted
+
+        # If annotation is Literal, try to match one of the literal choices
+        if get_origin(annotation) is Literal:
+            literals = list(get_args(annotation))
+            # try direct match
+            for lit in literals:
+                try:
+                    if isinstance(lit, str) and lit == s:
+                        return lit
+                    # try numeric/string conversions
+                    if isinstance(lit, (int, float)) and str(lit) == s:
+                        return lit
+                    if isinstance(lit, bool) and s.lower() in {"true", "false"}:
+                        return s.lower() == "true"
+                except Exception:
+                    continue
+            # fallback to literal_eval or string
+            try:
+                return ast.literal_eval(s)
+            except Exception:
+                return s
+
+        # For scalars: try numeric cast
+        num = AttackSelectorUI._try_number_cast(s)
+        if isinstance(num, (int, float)):
+            return num
+
+        # Booleans
+        if s.lower() in {"true", "false", "yes", "no", "1", "0"}:
+            return s.lower() in {"true", "yes", "1"}
+
+        # As a last resort return the original string
+        return s
 
     # ------------------------------------------------------------------
     # Static helpers
