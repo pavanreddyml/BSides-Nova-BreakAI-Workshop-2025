@@ -37,19 +37,19 @@ jobs:
       - name: Copy Files to Azure VM
         uses: appleboy/scp-action@v0.1.4
         with:
-          host: ${{ secrets.AZURE_VM_IP }}
-          username: ${{ secrets.AZURE_VM_USERNAME }}
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
           key_path: "private_key.pem"
           source: "."
-          target: "/home/${{ secrets.AZURE_VM_USERNAME }}/BSIDES"
+          target: "/home/${{ secrets.AZURE_VM_USER }}/BSIDES"
 
       - name: Run Deploy Script on VM
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.AZURE_VM_IP }}
-          username: ${{ secrets.AZURE_VM_USERNAME }}
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
           key_path: "private_key.pem"
           script: |
-            cd /home/${{ secrets.AZURE_VM_USERNAME }}/BSIDES/deployment
+            cd /home/${{ secrets.AZURE_VM_USER }}/BSIDES/deployment
             sed -i 's/\r$//' deploy.sh && chmod +x deploy.sh
             ./deploy.sh
