@@ -147,7 +147,7 @@ class AdversarialSelector:
                 "input_shape": input_shape
             }
         elif dataset == "mnist_digits":
-            from tensorflow import tf
+            import tensorflow as tf
             model = tf.keras.models.load_model(os.path.join(self.root_path, "assets/models/mnist_digits.h5"))
 
             def pred_fn(samples, *args, **kwargs):
