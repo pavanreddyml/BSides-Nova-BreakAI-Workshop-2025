@@ -45,7 +45,7 @@ jobs:
           rm: false
           strip_components: 0
 
-      - name: Install deps in venv & restart service
+      - name: Install deps in venv & restart service (robust venv creation)
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.AZURE_VM_HOST }}
@@ -56,26 +56,42 @@ jobs:
           script: |
             set -euo pipefail
 
-            # Ensure Python venv tooling exists (externally-managed Python needs python3[-X]-venv)
-            PY_VER="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-            if ! "${PYTHON_BIN}" -m venv --help >/dev/null 2>&1; then
-              sudo apt-get update -y
-              # Try versioned venv first, then generic
-              sudo apt-get install -y "python${PY_VER}-venv" || sudo apt-get install -y python3-venv
-            fi
-
-            # Ensure pip is available (some minimal images lack it)
-            if ! "${PYTHON_BIN}" -m pip -V >/dev/null 2>&1; then
-              sudo apt-get update -y
-              sudo apt-get install -y python3-pip
-            fi
-
             cd "${TARGET_DIR}"
 
-            # Create/refresh virtual environment
-            if [ ! -d ".venv" ]; then
-              "${PYTHON_BIN}" -m venv .venv
-            fi
+            # --- Robust venv creation for externally managed Python ---
+            mkvenv() {
+              # Clean broken venvs (e.g., missing bin/activate)
+              if [ -d ".venv" ] && [ ! -f ".venv/bin/activate" ]; then
+                rm -rf .venv
+              fi
+
+              # Ensure venv module is available
+              if ! "${PYTHON_BIN}" -c "import venv" >/dev/null 2>&1; then
+                sudo apt-get update -y
+                PY_VER="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+                sudo apt-get install -y "python${PY_VER}-venv" || sudo apt-get install -y python3-venv
+              fi
+
+              # Try creating venv
+              if [ ! -d ".venv" ]; then
+                "${PYTHON_BIN}" -m venv .venv || true
+              fi
+
+              # If still missing, fallback to virtualenv
+              if [ ! -f ".venv/bin/activate" ]; then
+                sudo apt-get update -y
+                sudo apt-get install -y python3-virtualenv || true
+                "${PYTHON_BIN}" -m virtualenv .venv || true
+              fi
+
+              # Final check
+              if [ ! -f ".venv/bin/activate" ]; then
+                echo "ERROR: venv creation failed (no .venv/bin/activate)."
+                exit 1
+              fi
+            }
+
+            mkvenv
             # shellcheck disable=SC1091
             . .venv/bin/activate
 
