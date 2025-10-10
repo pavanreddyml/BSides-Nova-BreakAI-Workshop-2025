@@ -30,6 +30,7 @@ jobs:
           cp assets/webpages/assignment2.html dist/
           cp assets/webpages/display_logs.html dist/
           cp assets/webpages/login.html dist/
+          cp assets/webpages/assets.html dist/
           touch dist/.nojekyll
 
       - name: Configure Pages

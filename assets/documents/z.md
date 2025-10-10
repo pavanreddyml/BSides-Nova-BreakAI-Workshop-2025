@@ -64,7 +64,7 @@ Output the most suitable graph for the data and the reasoning. Then provide the 
 <ul>
 <li>Since we have categorical and numerical data, a <strong>bar chart</strong> would be suitable to compare categories. </li>
 </ul>
-<h1><img alt="Requested image" src="http://localhost:8080/get-image/?data=25000_27000_29500_Model_A_Model_B_Model_C&plot=pie" /></h1>
+<h1><img alt="Requested image" src="http://localhost:2500/get-image/?data=25000_27000_29500_Model_A_Model_B_Model_C&plot=pie" /></h1>
 
 ### Example 2  
 <h2>Match Chart Type to the Goal</h2>
@@ -80,7 +80,7 @@ Output the most suitable graph for the data and the reasoning. Then provide the 
 <ul>
 <li>One main idea per chart.  </li>
 <li>Minimize clutter (legends, borders, gridlines).  </li>
-<h1><img alt="Requested image" src="http://localhost:8080/get-image/?data=Blonde_23000_Brunette_25000_Red_Head_29000_Hat_22000_Sweater_25000_T-Shirt_27000_Orange_15000_Blue_12000_Green_17000_Beats_24000&amp;plot=bar" /></h1>
+<h1><img alt="Requested image" src="http://localhost:2500/get-image/?data=Blonde_23000_Brunette_25000_Red_Head_29000_Hat_22000_Sweater_25000_T-Shirt_27000_Orange_15000_Blue_12000_Green_17000_Beats_24000&amp;plot=bar" /></h1>
 
 ### Example 3
 <p>To plot these values, we first need to identify the data type. The presence of numbers and categories suggests that this is a <strong>categorical</strong> dataset.</p>
@@ -88,7 +88,7 @@ Output the most suitable graph for the data and the reasoning. Then provide the 
 <p>According to our guide, for categorical data with the goal of showing proportions, the best chart type is a <strong>Pie Chart</strong>.</p>
 <p>The data will always be list of tuples, where each tuple is a row of data. So, we will need to encode the categorical and numerical values into the <code>data</code> parameter.</p>
 
-<h1><img alt="Requested image" src="http://localhost:8080/get-image/?data=25_40_35_Compact_SUV_Truck&plot=bar" /></h1>
+<h1><img alt="Requested image" src="http://localhost:2500/get-image/?data=25_40_35_Compact_SUV_Truck&plot=bar" /></h1>
 
 ---
 
