@@ -4,8 +4,6 @@ import json
 import subprocess
 
 class ShellExecutorAgent:
-    
-
     def __init__(
         self,
         ollama_client,
@@ -20,19 +18,17 @@ class ShellExecutorAgent:
         self.ollama = ollama_client
         self.users = users
 
-        # Hard gating configuration (independent of the LLM plan)
+
         self.required_role = required_role
         self.auth_required = auth_required
         self.sso_required = sso_required
         self.sso_match_username = sso_match_username
         self.sso_admin_if_admin_required = sso_admin_if_admin_required
 
-        # Step registry (handlers are hard logic only; no gating inside handlers)
         self._handlers: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], Dict[str, Any]]] = {
             "authenticate": self._step_authenticate,
             "get_role": self._step_get_role,
             "get_command": self._step_get_command,
-            # "execute" is orchestrated with external gate in _run_execute_step
         }
 
         self._planner_system = (
@@ -50,6 +46,7 @@ class ShellExecutorAgent:
         "- Extract values from the user query if present; else null.\n"
         "- Use keys exactly as shown."
         "- You will always include auth and get role"
+        "- Command is always a linux command line expression. If expression is not directly provided, give the expression"
         )
 
     def get_response(
@@ -69,6 +66,7 @@ class ShellExecutorAgent:
             "role": None,
             "command": None,
         }
+        self.execute = True
         trace: List[Dict[str, Any]] = []
 
         for raw_step in plan:
@@ -83,7 +81,6 @@ class ShellExecutorAgent:
             if step_name == "execute":
                 exec_result = self._run_execute_step(args=args, state=state, sso_username=sso_username)
                 trace.append({"execute": exec_result})
-                # Keep processing any remaining steps sequentially
                 continue
 
             handler = self._handlers.get(step_name)
@@ -91,8 +88,13 @@ class ShellExecutorAgent:
                 trace.append({"unknown_step": {"name": step_name, "args": args}})
                 continue
 
-            result = handler(args, state)
-            trace.append({step_name: result})
+            try:
+                result = handler(args, state)
+                trace.append({step_name: result})
+            except:
+                trace.append({"failed_step": {"name": step_name, "args": args}})
+                self.execute = False
+                continue
 
         out = {
             "plan": plan if return_plan else None,
@@ -112,13 +114,15 @@ class ShellExecutorAgent:
     def _step_authenticate(self, args: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
         username = args.get("username")
         password = args.get("password")
-        state["username"] = username if username is not None else state.get("username")
         if username is None or password is None:
-            state["authenticated"] = False
+            print("Failed to Authenticate. No user or Password")
+            self.execute = False
             return {"username": username, "authenticated": False}
         rec = self.users.get(str(username))
         ok = bool(isinstance(rec, dict) and rec.get("password") == str(password))
         state["authenticated"] = ok
+        if self.auth_required and not ok:
+            self.execute = False
         return {"username": username, "authenticated": ok}
 
     def _step_get_role(self, args: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
@@ -128,6 +132,8 @@ class ShellExecutorAgent:
         rec = self.users.get(str(username)) if username is not None else None
         if isinstance(rec, dict):
             role = rec.get("role")
+        if role != self.required_role:
+            self.execute = False
         state["role"] = role
         return {"username": username, "role": role}
 
@@ -137,7 +143,6 @@ class ShellExecutorAgent:
             state["command"] = command
         return {"query": args.get("query"), "command": command}
 
-    # -------------------------- Execution (externally gated) --------------------------
     def _run_execute_step(
         self,
         *,
@@ -146,35 +151,13 @@ class ShellExecutorAgent:
         sso_username: Optional[str],
     ) -> Dict[str, Any]:
         command = args.get("command") or state.get("command")
-        if self._pre_execute_gate(state=state, sso_username=sso_username) and command:
+        if self.sso_required and self.sso_match_username != state.get("username") and (self.sso_admin_if_admin_required and state.get("role") != "admin"):
+            self.execute = False
+            return {"command": command, "executed": False, "returncode": None, "stdout": None, "stderr": None}
+        if command and self.execute:
             rc, out, err = self._execute(command)
             return {"command": command, "executed": True, "returncode": rc, "stdout": out, "stderr": err}
         return {"command": command, "executed": False, "returncode": None, "stdout": None, "stderr": None}
-
-    def _pre_execute_gate(self, *, state: Dict[str, Any], sso_username: Optional[str]) -> bool:
-
-        authed = bool(state.get("authenticated"))
-        role = state.get("role")
-        llm_user = state.get("username")
-
-        if self.auth_required and not authed:
-            return False
-
-        if self.required_role is not None:
-            if role != self.required_role:
-                return False
-
-        if self.sso_required:
-            if not sso_username:
-                return False
-            if self.sso_match_username and llm_user and sso_username != llm_user:
-                return False
-            if self.required_role is not None and self.sso_admin_if_admin_required:
-                sso_role = self.users.get(sso_username, {}).get("role")
-                if sso_role != self.required_role:
-                    return False
-
-        return True
 
 
     def _execute(self, command: str) -> Tuple[int, str, str]:
